@@ -4,18 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>YouTify</title>
-<link rel="icon" type="image/png" href="images/logo.png">
+<link rel="icon" type="image/png" href="/images/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#0c0d0f;
+    --sidebar:#000000;
     --panel:#16181c;
-    --spotify:#1DB954;
+    --panel-hover:#1f2126;
+    --accent:#1DB954;
     --youtube:#E1303F;
     --text:#F2F2F0;
     --muted:#8A8A93;
     --line:#26282e;
+    --bottom-bar-h:88px;
   }
   *{box-sizing:border-box;}
   body{
@@ -23,33 +26,77 @@
     background:var(--bg);
     color:var(--text);
     font-family:'Space Grotesk', sans-serif;
-    min-height:100vh;
+    height:100vh;
+    overflow:hidden;
   }
-  header{
-    padding:48px 24px 24px;
-    text-align:center;
+  .app-shell{
+    display:flex;
+    height:100vh;
+  }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{
+    width:220px;
+    flex-shrink:0;
+    background:var(--sidebar);
+    padding:24px 18px;
+    display:flex;
+    flex-direction:column;
+    gap:28px;
   }
   .wordmark{
     font-family:'Archivo Black', sans-serif;
-    font-size:clamp(2rem, 6vw, 3.5rem);
+    font-size:1.6rem;
     letter-spacing:-0.02em;
     margin:0;
-    background:linear-gradient(90deg, var(--spotify), var(--youtube));
+    background:linear-gradient(90deg, var(--accent), var(--youtube));
     -webkit-background-clip:text;
     background-clip:text;
     color:transparent;
   }
   .tagline{
     color:var(--muted);
-    font-size:0.95rem;
-    margin-top:8px;
+    font-size:0.75rem;
+    margin-top:6px;
+    line-height:1.4;
+  }
+  .swatch-group{ margin-top:auto; }
+  .swatch-label{
+    font-size:0.7rem; color:var(--muted); text-transform:uppercase;
+    letter-spacing:0.06em; margin-bottom:10px;
+  }
+  .swatches{ display:flex; flex-wrap:wrap; gap:8px; }
+  .swatch{
+    width:22px; height:22px; border-radius:50%;
+    cursor:pointer; border:2px solid transparent;
+    transition:transform 0.1s ease;
+  }
+  .swatch:hover{ transform:scale(1.12); }
+  .swatch.active{ border-color:var(--text); }
+
+  .footer-link{
+    font-size:0.72rem; color:var(--muted);
+  }
+  .footer-link a{ color:var(--muted); }
+
+  /* ---------- Main content ---------- */
+  .main{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    min-width:0;
+    padding-bottom:var(--bottom-bar-h);
+  }
+  .main-scroll{
+    flex:1;
+    overflow-y:auto;
+    padding:32px 32px 8px;
   }
   .search-wrap{
-    max-width:560px;
-    margin:32px auto 0;
-    padding:0 24px;
+    max-width:640px;
     display:flex;
     gap:8px;
+    margin-bottom:8px;
   }
   #query{
     flex:1;
@@ -57,200 +104,257 @@
     border:1px solid var(--line);
     color:var(--text);
     padding:14px 16px;
-    border-radius:10px;
+    border-radius:24px;
     font-family:inherit;
     font-size:1rem;
     outline:none;
   }
-  #query:focus{ border-color:var(--spotify); }
+  #query:focus{ border-color:var(--accent); }
   #searchBtn{
-    background:var(--text);
-    color:var(--bg);
+    background:var(--accent);
+    color:#04170b;
     border:none;
-    padding:0 22px;
-    border-radius:10px;
+    padding:0 24px;
+    border-radius:24px;
     font-weight:600;
     cursor:pointer;
     font-family:inherit;
   }
-  #searchBtn:hover{ opacity:0.85; }
+  #searchBtn:hover{ filter:brightness(1.08); }
   #status{
-    text-align:center;
     color:var(--muted);
     font-size:0.9rem;
-    margin-top:16px;
+    margin:12px 0;
     min-height:1.2em;
   }
   #results{
     max-width:640px;
-    margin:16px auto;
-    padding:0 24px;
     display:flex;
     flex-direction:column;
-    gap:10px;
+    gap:4px;
   }
   .result-row{
     display:flex;
     align-items:center;
     gap:14px;
-    background:var(--panel);
-    border:1px solid var(--line);
-    border-radius:10px;
-    padding:10px 14px;
+    border-radius:8px;
+    padding:8px 10px;
     cursor:pointer;
-    transition:border-color 0.15s ease;
+    transition:background 0.12s ease;
   }
-  .result-row:hover{ border-color:var(--spotify); }
+  .result-row:hover, .result-row.active{ background:var(--panel-hover); }
   .result-row img{
-    width:48px; height:48px; border-radius:6px; object-fit:cover; flex-shrink:0;
+    width:44px; height:44px; border-radius:4px; object-fit:cover; flex-shrink:0;
   }
   .result-meta{ min-width:0; }
   .result-title{
     font-weight:600; font-size:0.95rem;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
+  .result-row.active .result-title{ color:var(--accent); }
   .result-artist{
     color:var(--muted); font-size:0.85rem;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
 
-  /* Now playing card */
-  #player-card{
-    max-width:640px;
-    margin:36px auto;
-    padding:0 24px;
-    display:none;
-  }
-  .card-inner{
+  /* ---------- Bottom player bar ---------- */
+  #player-bar{
+    position:fixed;
+    left:220px; right:0; bottom:0; height:var(--bottom-bar-h);
     background:var(--panel);
-    border:1px solid var(--line);
-    border-radius:16px;
-    padding:24px;
-    display:flex;
-    gap:20px;
+    border-top:1px solid var(--line);
+    display:none;
     align-items:center;
+    padding:0 20px;
+    gap:20px;
   }
-  /* Signature element: split disc, half spotify green half youtube red,
-     spins while audio plays via the hidden YouTube backend */
+  .now-block{
+    display:flex; align-items:center; gap:14px;
+    width:260px; flex-shrink:0; min-width:0;
+  }
   .disc{
-    width:96px; height:96px;
+    width:52px; height:52px;
     border-radius:50%;
     flex-shrink:0;
     position:relative;
-    background:conic-gradient(var(--spotify) 0deg 180deg, var(--youtube) 180deg 360deg);
+    background:conic-gradient(var(--accent) 0deg 180deg, var(--youtube) 180deg 360deg);
     display:flex; align-items:center; justify-content:center;
     animation:spin 6s linear infinite paused;
   }
   .disc.playing{ animation-play-state:running; }
   .disc img{
-    width:56px; height:56px; border-radius:50%; object-fit:cover;
-    border:3px solid var(--bg);
+    width:30px; height:30px; border-radius:50%; object-fit:cover;
+    border:2px solid var(--panel);
   }
   @keyframes spin{ to{ transform:rotate(360deg); } }
+  .now-meta{ min-width:0; }
+  .now-title{ font-weight:600; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .now-artist{ color:var(--muted); font-size:0.78rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
-  .now-meta{ flex:1; min-width:0; }
-  .now-title{ font-weight:600; font-size:1.1rem; }
-  .now-artist{ color:var(--muted); font-size:0.9rem; margin-top:2px; }
-
-  .controls{ display:flex; align-items:center; gap:14px; margin-top:14px; }
-  #playPause{
-    background:var(--text); color:var(--bg); border:none;
-    width:40px; height:40px; border-radius:50%;
-    font-size:1rem; cursor:pointer;
+  .transport{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+    max-width:640px;
+    margin:0 auto;
   }
+  .transport-buttons{ display:flex; align-items:center; gap:18px; }
+  .transport-buttons button{
+    background:none; border:none; color:var(--text);
+    cursor:pointer; font-size:1.1rem; padding:4px;
+    opacity:0.85;
+  }
+  .transport-buttons button:hover{ opacity:1; }
+  .transport-buttons button:disabled{ opacity:0.3; cursor:default; }
+  #playPause{
+    background:var(--text); color:var(--bg);
+    width:34px; height:34px; border-radius:50%;
+    font-size:0.95rem;
+  }
+  .progress-row{
+    display:flex; align-items:center; gap:10px; width:100%;
+  }
+  .time{ font-size:0.72rem; color:var(--muted); min-width:36px; }
+  .time.right{ text-align:left; }
   .progress-track{
-    flex:1; height:5px; background:var(--line); border-radius:4px; position:relative; cursor:pointer;
+    flex:1; height:4px; background:var(--line); border-radius:4px; position:relative; cursor:pointer;
   }
   .progress-fill{
     position:absolute; left:0; top:0; height:100%;
-    background:linear-gradient(90deg, var(--spotify), var(--youtube));
+    background:linear-gradient(90deg, var(--accent), var(--youtube));
     border-radius:4px; width:0%;
   }
-  .time{ font-size:0.75rem; color:var(--muted); min-width:74px; text-align:right; }
 
-  .source-tag{
-    font-size:0.7rem; color:var(--muted); margin-top:10px;
+  .source-block{
+    width:200px; flex-shrink:0; text-align:right;
+    font-size:0.7rem; color:var(--muted);
   }
-  .source-tag a{ color:var(--spotify); text-decoration:none; }
-  .source-tag a:hover{ text-decoration:underline; }
+  .source-block a{ color:var(--accent); text-decoration:none; }
+  .source-block a:hover{ text-decoration:underline; }
 
   #yt-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; opacity:0; pointer-events:none; }
-
-  footer{
-    text-align:center;
-    color:var(--muted);
-    font-size:0.8rem;
-    padding:40px 24px 32px;
-  }
-  footer a{ color:var(--muted); }
 </style>
 </head>
 <body>
 
-<header>
-  <h1 class="wordmark">YouTify</h1>
-  <p class="tagline">Spotify's metadata. YouTube's engine.</p>
-</header>
+<div class="app-shell">
+  <div class="sidebar">
+    <div>
+      <h1 class="wordmark">YouTify</h1>
+      <p class="tagline">Spotify's metadata.<br>YouTube's engine.</p>
+    </div>
 
-<div class="search-wrap">
-  <input id="query" type="text" placeholder="Search for a song or artist..." autocomplete="off">
-  <button id="searchBtn">Search</button>
+    <div class="swatch-group">
+      <div class="swatch-label">Accent color</div>
+      <div class="swatches" id="swatches"></div>
+    </div>
+
+    <div class="footer-link">
+      <a href="https://warecario.github.io/">Visit Warecario's website</a>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="main-scroll">
+      <div class="search-wrap">
+        <input id="query" type="text" placeholder="Search for a song or artist..." autocomplete="off">
+        <button id="searchBtn">Search</button>
+      </div>
+      <p id="status"></p>
+      <div id="results"></div>
+    </div>
+  </div>
 </div>
-<p id="status"></p>
 
-<div id="results"></div>
-
-<div id="player-card">
-  <div class="card-inner">
+<div id="player-bar">
+  <div class="now-block">
     <div class="disc" id="disc">
       <img id="nowArt" src="" alt="">
     </div>
     <div class="now-meta">
       <div class="now-title" id="nowTitle"></div>
       <div class="now-artist" id="nowArtist"></div>
-      <div class="controls">
-        <button id="playPause">▶</button>
-        <div class="progress-track" id="progressTrack">
-          <div class="progress-fill" id="progressFill"></div>
-        </div>
-        <div class="time" id="timeDisplay">0:00 / 0:00</div>
-      </div>
-      <div class="source-tag">
-        Metadata via <a id="spotifyLink" href="#" target="_blank">Spotify</a> · Playback via YouTube
-      </div>
     </div>
+  </div>
+
+  <div class="transport">
+    <div class="transport-buttons">
+      <button id="prevBtn" title="Previous">⏮</button>
+      <button id="playPause">▶</button>
+      <button id="nextBtn" title="Next">⏭</button>
+    </div>
+    <div class="progress-row">
+      <div class="time" id="timeCur">0:00</div>
+      <div class="progress-track" id="progressTrack">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="time time-right" id="timeDur">0:00</div>
+    </div>
+  </div>
+
+  <div class="source-block">
+    Metadata via <a id="spotifyLink" href="#" target="_blank">Spotify</a><br>Playback via YouTube
   </div>
 </div>
 
 <div id="yt-hidden"><div id="ytPlayer"></div></div>
 
-<footer>
-  <p><a href="https://warecario.github.io/">Visit Warecario's website</a></p>
-</footer>
-
 <script>
 /* ============================================================
    YouTify — configuration
 
-   No API keys live in this file anymore. All Spotify/YouTube
-   calls go through a Cloudflare Worker proxy that holds the
-   real credentials server-side (see worker.js). Point this at
-   your deployed Worker's URL, e.g.:
+   No API keys live in this file. All Spotify/YouTube calls go
+   through a Cloudflare Worker proxy that holds the real
+   credentials server-side (see worker.js). Point this at your
+   deployed Worker's URL — no trailing slash:
 
      "https://youtify-proxy.yourname.workers.dev"
    ============================================================ */
 const PROXY_BASE_URL = "https://youtify-proxy.youtify.workers.dev";
 
+const ACCENT_COLORS = [
+  { name: "Spotify green", value: "#1DB954" },
+  { name: "Electric blue",  value: "#3D8BFF" },
+  { name: "Violet",         value: "#B15CFF" },
+  { name: "Amber",          value: "#FFB020" },
+  { name: "Hot pink",       value: "#FF4D8D" },
+];
+
 let ytPlayer = null;
-let ytReady = false;
 let progressTimer = null;
 let currentDuration = 0;
+
+let currentResults = [];
+let currentIndex = -1;
 
 const statusEl = document.getElementById('status');
 const resultsEl = document.getElementById('results');
 const queryEl = document.getElementById('query');
+const playerBarEl = document.getElementById('player-bar');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
 
 function setStatus(msg){ statusEl.textContent = msg; }
+
+/* ---------- Accent color picker ---------- */
+
+function initSwatches(){
+  const wrap = document.getElementById('swatches');
+  ACCENT_COLORS.forEach((c, i) => {
+    const el = document.createElement('div');
+    el.className = 'swatch' + (i === 0 ? ' active' : '');
+    el.style.background = c.value;
+    el.title = c.name;
+    el.addEventListener('click', () => {
+      document.documentElement.style.setProperty('--accent', c.value);
+      document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+      el.classList.add('active');
+    });
+    wrap.appendChild(el);
+  });
+}
 
 /* ---------- Spotify + YouTube, via the proxy (no keys client-side) ---------- */
 
@@ -294,7 +398,7 @@ async function ensurePlayer(videoId){
       height: '1', width: '1', videoId: videoId,
       playerVars: { autoplay: 1, controls: 0 },
       events: {
-        onReady: () => { ytReady = true; resolve(); },
+        onReady: () => { resolve(); },
         onStateChange: onPlayerStateChange
       }
     });
@@ -314,6 +418,9 @@ function onPlayerStateChange(e){
     playPauseBtn.textContent = '▶';
     if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED){
       stopProgressLoop();
+    }
+    if (e.data === YT.PlayerState.ENDED){
+      goNext();
     }
   }
 }
@@ -337,11 +444,11 @@ function updateProgress(){
   const dur = currentDuration || ytPlayer.getDuration() || 0;
   const pct = dur ? (cur / dur) * 100 : 0;
   document.getElementById('progressFill').style.width = pct + '%';
-  document.getElementById('timeDisplay').textContent =
-    `${formatTime(cur)} / ${formatTime(dur)}`;
+  document.getElementById('timeCur').textContent = formatTime(cur);
+  document.getElementById('timeDur').textContent = formatTime(dur);
 }
 
-/* ---------- UI wiring ---------- */
+/* ---------- Search + queue ---------- */
 
 async function runSearch(){
   const q = queryEl.value.trim();
@@ -352,15 +459,18 @@ async function runSearch(){
     const tracks = await searchSpotify(q);
     if (!tracks.length){ setStatus('No matches found.'); return; }
     setStatus('');
-    tracks.forEach(renderResultRow);
+    currentResults = tracks;
+    currentIndex = -1;
+    tracks.forEach((t, i) => renderResultRow(t, i));
   } catch (err){
     setStatus(err.message);
   }
 }
 
-function renderResultRow(track){
+function renderResultRow(track, index){
   const row = document.createElement('div');
   row.className = 'result-row';
+  row.dataset.index = index;
   const art = track.album.images[track.album.images.length - 1]?.url || '';
   const artists = track.artists.join(', ');
   row.innerHTML = `
@@ -370,17 +480,42 @@ function renderResultRow(track){
       <div class="result-artist">${artists}</div>
     </div>
   `;
-  row.addEventListener('click', () => playTrack(track));
+  row.addEventListener('click', () => playAt(index));
   resultsEl.appendChild(row);
+}
+
+function highlightActiveRow(){
+  document.querySelectorAll('.result-row').forEach(row => {
+    row.classList.toggle('active', Number(row.dataset.index) === currentIndex);
+  });
+}
+
+function updateTransportButtons(){
+  prevBtn.disabled = currentIndex <= 0;
+  nextBtn.disabled = currentIndex < 0 || currentIndex >= currentResults.length - 1;
+}
+
+async function playAt(index){
+  if (index < 0 || index >= currentResults.length) return;
+  currentIndex = index;
+  highlightActiveRow();
+  updateTransportButtons();
+  await playTrack(currentResults[index]);
+}
+
+function goNext(){
+  if (currentIndex < currentResults.length - 1) playAt(currentIndex + 1);
+}
+function goPrev(){
+  if (currentIndex > 0) playAt(currentIndex - 1);
 }
 
 async function playTrack(track){
   const artists = track.artists.join(', ');
   setStatus('Finding playback source on YouTube…');
 
-  document.getElementById('player-card').style.display = 'block';
-  document.getElementById('nowArt').src =
-    track.album.images[0]?.url || '';
+  playerBarEl.style.display = 'flex';
+  document.getElementById('nowArt').src = track.album.images[0]?.url || '';
   document.getElementById('nowTitle').textContent = track.name;
   document.getElementById('nowArtist').textContent = artists;
   document.getElementById('spotifyLink').href = track.external_url;
@@ -395,6 +530,10 @@ async function playTrack(track){
   }
 }
 
+/* ---------- Wiring ---------- */
+
+initSwatches();
+
 document.getElementById('searchBtn').addEventListener('click', runSearch);
 queryEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
 
@@ -404,6 +543,9 @@ document.getElementById('playPause').addEventListener('click', () => {
   if (state === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
   else ytPlayer.playVideo();
 });
+
+nextBtn.addEventListener('click', goNext);
+prevBtn.addEventListener('click', goPrev);
 
 document.getElementById('progressTrack').addEventListener('click', (e) => {
   if (!ytPlayer || !currentDuration) return;
