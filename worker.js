@@ -56,7 +56,10 @@ async function getSpotifyToken(env) {
     body: "grant_type=client_credentials",
   });
 
-  if (!res.ok) throw new Error("Spotify auth failed");
+  if (!res.ok) {
+    const bodyText = await res.text();
+    throw new Error(`Spotify auth failed (${res.status}): ${bodyText}`);
+  }
 
   const data = await res.json();
   cachedToken = data.access_token;
@@ -73,7 +76,10 @@ async function handleSpotifySearch(url, env) {
     `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=8`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
-  if (!res.ok) return json({ error: "Spotify search failed" }, 502);
+  if (!res.ok) {
+    const bodyText = await res.text();
+    return json({ error: "Spotify search failed", status: res.status, detail: bodyText }, 502);
+  }
 
   const data = await res.json();
 
@@ -100,7 +106,10 @@ async function handleYouTubeSearch(url, env) {
   const res = await fetch(
     `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&type=video&q=${q}&key=${env.YOUTUBE_API_KEY}`
   );
-  if (!res.ok) return json({ error: "YouTube search failed" }, 502);
+  if (!res.ok) {
+    const bodyText = await res.text();
+    return json({ error: "YouTube search failed", status: res.status, detail: bodyText }, 502);
+  }
 
   const data = await res.json();
   const videoId = data.items?.[0]?.id?.videoId ?? null;
