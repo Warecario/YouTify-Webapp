@@ -21,7 +21,7 @@
  * being visible in a browser's dev tools or page source.
  */
 
-const ALLOWED_ORIGIN = "https://warecario.github.io/YouTify-Webapp/";
+const ALLOWED_ORIGIN = "https://warecario.github.io";
 
 function corsHeaders() {
   return {
