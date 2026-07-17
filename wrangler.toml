@@ -1,0 +1,7 @@
+name = "youtify-proxy"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Secrets (SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, YOUTUBE_API_KEY)
+# are NOT set here — set them via `wrangler secret put <NAME>` so they
+# never end up in this file or in git.

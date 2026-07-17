@@ -231,25 +231,16 @@
 <script>
 /* ============================================================
    YouTify — configuration
-   Fill in your own credentials below. None of these are
-   provided for you; each service requires its own free
-   developer account.
 
-   Spotify:  https://developer.spotify.com/dashboard
-             Create an app, grab the Client ID + Client Secret.
-             This demo uses the Client Credentials flow, which
-             is search-only (no login, no user playlists).
+   No API keys live in this file anymore. All Spotify/YouTube
+   calls go through a Cloudflare Worker proxy that holds the
+   real credentials server-side (see worker.js). Point this at
+   your deployed Worker's URL, e.g.:
 
-   YouTube:  https://console.cloud.google.com/
-             Enable "YouTube Data API v3", create an API key
-             under Credentials.
+     "https://youtify-proxy.yourname.workers.dev"
    ============================================================ */
-const SPOTIFY_CLIENT_ID = "YOUR_SPOTIFY_CLIENT_ID";
-const SPOTIFY_CLIENT_SECRET = "YOUR_SPOTIFY_CLIENT_SECRET";
-const YOUTUBE_API_KEY = "AIzaSyCOr0H7Zem5Ev5mZP6-nFtSU7MaRQc53o8";
+const PROXY_BASE_URL = "https://youtify.workers.dev";
 
-let spotifyToken = null;
-let tokenExpiresAt = 0;
 let ytPlayer = null;
 let ytReady = false;
 let progressTimer = null;
@@ -261,48 +252,22 @@ const queryEl = document.getElementById('query');
 
 function setStatus(msg){ statusEl.textContent = msg; }
 
-/* ---------- Spotify: auth + search ---------- */
-
-async function getSpotifyToken(){
-  if (spotifyToken && Date.now() < tokenExpiresAt) return spotifyToken;
-
-  const creds = btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`);
-  const res = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      "Authorization": `Basic ${creds}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: "grant_type=client_credentials"
-  });
-
-  if (!res.ok) throw new Error("Spotify auth failed — check your client ID/secret.");
-
-  const data = await res.json();
-  spotifyToken = data.access_token;
-  tokenExpiresAt = Date.now() + (data.expires_in - 60) * 1000;
-  return spotifyToken;
-}
+/* ---------- Spotify + YouTube, via the proxy (no keys client-side) ---------- */
 
 async function searchSpotify(q){
-  const token = await getSpotifyToken();
-  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=8`;
-  const res = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
-  if (!res.ok) throw new Error("Spotify search failed.");
+  const url = `${PROXY_BASE_URL}/api/spotify-search?q=${encodeURIComponent(q)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Search failed — is the proxy deployed and reachable?");
   const data = await res.json();
-  return data.tracks.items;
+  return data.tracks;
 }
 
-/* ---------- YouTube: find a matching video ---------- */
-
 async function findYouTubeVideoId(title, artist){
-  const q = encodeURIComponent(`${artist} - ${title} audio`);
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=1&type=video&q=${q}&key=${YOUTUBE_API_KEY}`;
+  const url = `${PROXY_BASE_URL}/api/youtube-search?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error("YouTube search failed — check your API key/quota.");
+  if (!res.ok) throw new Error("YouTube lookup failed — is the proxy deployed and reachable?");
   const data = await res.json();
-  if (!data.items || !data.items.length) return null;
-  return data.items[0].id.videoId;
+  return data.videoId;
 }
 
 /* ---------- YouTube IFrame Player (hidden, audio-only use) ---------- */
@@ -397,7 +362,7 @@ function renderResultRow(track){
   const row = document.createElement('div');
   row.className = 'result-row';
   const art = track.album.images[track.album.images.length - 1]?.url || '';
-  const artists = track.artists.map(a => a.name).join(', ');
+  const artists = track.artists.join(', ');
   row.innerHTML = `
     <img src="${art}" alt="">
     <div class="result-meta">
@@ -410,7 +375,7 @@ function renderResultRow(track){
 }
 
 async function playTrack(track){
-  const artists = track.artists.map(a => a.name).join(', ');
+  const artists = track.artists.join(', ');
   setStatus('Finding playback source on YouTube…');
 
   document.getElementById('player-card').style.display = 'block';
@@ -418,7 +383,7 @@ async function playTrack(track){
     track.album.images[0]?.url || '';
   document.getElementById('nowTitle').textContent = track.name;
   document.getElementById('nowArtist').textContent = artists;
-  document.getElementById('spotifyLink').href = track.external_urls.spotify;
+  document.getElementById('spotifyLink').href = track.external_url;
 
   try {
     const videoId = await findYouTubeVideoId(track.name, artists);
