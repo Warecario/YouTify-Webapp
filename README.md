@@ -8,3 +8,4 @@ A Web App that uses Spotify as the Metadata and YouTube as the Back-End.
 - Homepage (Playlist grid view + others) WIP
 - Mobile Mode
 - (Possibly) Lyrics Mode
+- Real Settings Page
