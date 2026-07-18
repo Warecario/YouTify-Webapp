@@ -118,8 +118,10 @@ async function handlePlaylistTracks(url, env) {
   if (!id) return json({ error: "Missing id param" }, 400);
 
   const token = await getSpotifyToken(env);
+  // Spotify's Feb 2026 migration removed GET /playlists/{id}/tracks in
+  // favor of GET /playlists/{id}/items (and item.track became item.item).
   const res = await fetch(
-    `https://api.spotify.com/v1/playlists/${encodeURIComponent(id)}/tracks?limit=100`,
+    `https://api.spotify.com/v1/playlists/${encodeURIComponent(id)}/items?limit=50`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!res.ok) {
@@ -129,7 +131,7 @@ async function handlePlaylistTracks(url, env) {
 
   const data = await res.json();
   const tracks = (data.items || [])
-    .map((item) => item.track)
+    .map((entry) => entry.item)
     .filter(Boolean)
     .map((t) => ({
       name: t.name,

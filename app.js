@@ -292,11 +292,13 @@ async function loadPlaylistTracks(playlistId, playlistName, rowEl){
   setStatus(`Loading "${playlistName}"…`);
   resultsEl.innerHTML = '';
   try {
-    const res = await spotifyUserFetch(`playlists/${playlistId}/tracks?limit=100`);
+    // Feb 2026 migration: /playlists/{id}/tracks was removed in favor
+    // of /playlists/{id}/items (and item.track became item.item).
+    const res = await spotifyUserFetch(`playlists/${playlistId}/items?limit=50`);
     if (!res.ok) throw new Error('Could not load that playlist.');
     const data = await res.json();
     const tracks = data.items
-      .map(item => item.track)
+      .map(entry => entry.item)
       .filter(Boolean)
       .map(t => ({
         name: t.name,
