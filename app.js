@@ -31,12 +31,13 @@ const PROXY_BASE_URL = "https://youtify-proxy.youtify.workers.dev";
    ============================================================ */
 const SPOTIFY_CLIENT_ID = "40fff33a4ef84ee38d6384928a605538";
 const REDIRECT_URI = window.location.origin + window.location.pathname;
-const SPOTIFY_SCOPES = "playlist-read-private playlist-read-collaborative";
+const SPOTIFY_SCOPES = "playlist-read-private playlist-read-collaborative user-library-read";
 
 let spotifyAccessToken = null;
 let spotifyRefreshToken = null;
 let currentPlaylistContext = null; // { id, name } or null when playing from search
 let pendingRestoreTrack = null;
+let pendingRestorePosition = 0;
 
 /* ---------- Icon set (SVG, no emoji) ---------- */
 const ICONS = {
@@ -91,6 +92,16 @@ const ACCENT_COLORS = [
   { name: "Violet",         value: "#B15CFF" },
   { name: "Amber",          value: "#FFB020" },
   { name: "Hot pink",       value: "#FF4D8D" },
+  { name: "Teal",           value: "#1FC8B0" },
+  { name: "Crimson",        value: "#E8384F" },
+  { name: "Lime",           value: "#9BE536" },
+  { name: "Cyan",           value: "#31D4E8" },
+  { name: "Coral",          value: "#FF6B4A" },
+  { name: "Indigo",         value: "#6C5CE7" },
+  { name: "Gold",           value: "#E8C547" },
+  { name: "Magenta",        value: "#D6409F" },
+  { name: "Mint",           value: "#3DDC97" },
+  { name: "Slate",          value: "#8B95A5" },
 ];
 
 let ytPlayer = null;
@@ -274,6 +285,13 @@ async function loadUserPlaylists(){
     const data = await res.json();
     labelEl.style.display = 'block';
     listEl.innerHTML = '';
+
+    const likedRow = document.createElement('div');
+    likedRow.className = 'playlist-row liked-songs-row';
+    likedRow.textContent = 'Liked Songs';
+    likedRow.addEventListener('click', () => loadLikedSongs(likedRow));
+    listEl.appendChild(likedRow);
+
     data.items.forEach(pl => {
       const row = document.createElement('div');
       row.className = 'playlist-row';
@@ -281,6 +299,52 @@ async function loadUserPlaylists(){
       row.addEventListener('click', () => loadPlaylistTracks(pl.id, pl.name, row));
       listEl.appendChild(row);
     });
+  } catch (err){
+    setStatus(err.message);
+  }
+}
+
+async function loadLikedSongs(rowEl){
+  document.querySelectorAll('.playlist-row').forEach(r => r.classList.remove('active'));
+  if (rowEl) rowEl.classList.add('active');
+
+  setStatus('Loading Liked Songs…');
+  resultsEl.innerHTML = '';
+  try {
+    // Unlike playlist items, GET /me/tracks was unaffected by the Feb
+    // 2026 migration — still uses the { track: {...} } shape.
+    let nextUrl = 'me/tracks?limit=50';
+    let tracks = [];
+    let pageCount = 0;
+    const MAX_PAGES = 40;
+
+    while (nextUrl && pageCount < MAX_PAGES){
+      setStatus(`Loading Liked Songs… (${tracks.length} so far)`);
+      const res = await spotifyUserFetch(nextUrl);
+      if (!res.ok) throw new Error('Could not load Liked Songs.');
+      const data = await res.json();
+      const pageTracks = data.items
+        .map(entry => entry.track)
+        .filter(Boolean)
+        .map(t => ({
+          name: t.name,
+          artists: t.artists.map(a => a.name),
+          album: { images: t.album.images },
+          external_url: t.external_urls?.spotify,
+        }));
+      tracks = tracks.concat(pageTracks);
+      nextUrl = data.next;
+      pageCount++;
+    }
+
+    if (!tracks.length){ setStatus('No liked songs found.'); return; }
+    setStatus('');
+    currentPlaylistContext = { id: 'liked-songs', name: 'Liked Songs', source: 'liked' };
+    currentResults = tracks;
+    currentIndex = -1;
+    historyStack = [];
+    forwardStack = [];
+    tracks.forEach((t, i) => renderResultRow(t, i));
   } catch (err){
     setStatus(err.message);
   }
@@ -429,6 +493,7 @@ function formatTime(sec){
   const s = String(sec % 60).padStart(2, '0');
   return `${m}:${s}`;
 }
+let positionSaveCounter = 0;
 function updateProgress(){
   if (!ytPlayer || !ytPlayer.getCurrentTime) return;
   const cur = ytPlayer.getCurrentTime();
@@ -437,6 +502,13 @@ function updateProgress(){
   document.getElementById('progressFill').style.width = pct + '%';
   document.getElementById('timeCur').textContent = formatTime(cur);
   document.getElementById('timeDur').textContent = formatTime(dur);
+
+  // Save roughly every 2 seconds (updateProgress runs every 400ms)
+  // rather than on every tick.
+  positionSaveCounter++;
+  if (positionSaveCounter % 5 === 0){
+    setCookie('youtify_last_position', Math.floor(cur), 30);
+  }
 }
 
 /* ---------- Search + queue ---------- */
@@ -647,7 +719,7 @@ function toggleRepeat(){
   updateTransportButtons();
 }
 
-async function playTrack(track){
+async function playTrack(track, resumeAtSeconds){
   const artists = track.artists.join(', ');
   setStatus('Finding playback source on YouTube…');
 
@@ -659,11 +731,17 @@ async function playTrack(track){
   saveNowPlayingCookie(track);
   recordRecentlyPlayed(track);
 
+  // A fresh play (not a resume) starts its saved position over at 0.
+  if (!resumeAtSeconds) setCookie('youtify_last_position', '0', 30);
+
   try {
     const videoId = await findYouTubeVideoId(track.name, artists);
     if (!videoId){ setStatus('No YouTube match found for this track.'); return; }
     setStatus('');
     await ensurePlayer(videoId);
+    if (resumeAtSeconds){
+      ytPlayer.seekTo(resumeAtSeconds, true);
+    }
   } catch (err){
     setStatus(err.message);
   }
@@ -734,6 +812,8 @@ async function restoreSession(){
       const pl = JSON.parse(savedPlaylistRaw);
       if (pl.source === 'user' && spotifyAccessToken){
         await loadPlaylistTracks(pl.id, pl.name);
+      } else if (pl.source === 'liked' && spotifyAccessToken){
+        await loadLikedSongs();
       } else if (pl.source === 'public'){
         await loadPublicPlaylistTracks(pl.id, pl.name);
       }
@@ -754,11 +834,16 @@ async function restoreSession(){
   // browsers block unsolicited autoplay anyway, and it respects the
   // person's own choice of when to resume listening.
   pendingRestoreTrack = track;
+  const savedPosition = parseInt(getCookie('youtify_last_position'), 10);
+  pendingRestorePosition = Number.isFinite(savedPosition) ? savedPosition : 0;
   playerBarEl.style.display = 'flex';
   document.getElementById('nowArt').src = track.album.images[0]?.url || '';
   document.getElementById('nowTitle').textContent = track.name;
   document.getElementById('nowArtist').textContent = track.artists.join(', ');
   document.getElementById('spotifyLink').href = track.external_url || '#';
+  if (pendingRestorePosition > 0){
+    document.getElementById('timeCur').textContent = formatTime(pendingRestorePosition);
+  }
 }
 
 /* ---------- Wiring ---------- */
@@ -792,8 +877,12 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
   settingsModal.classList.remove('open');
 });
 
+document.getElementById('miniToggleBtn').addEventListener('click', () => {
+  playerBarEl.classList.toggle('mini');
+});
+
 document.getElementById('clearDataBtn').addEventListener('click', () => {
-  ['youtify_accent', 'youtify_spotify_refresh', 'youtify_last_track', 'youtify_last_playlist']
+  ['youtify_accent', 'youtify_spotify_refresh', 'youtify_last_track', 'youtify_last_playlist', 'youtify_last_position']
     .forEach(deleteCookie);
   window.location.reload();
 });
@@ -805,8 +894,10 @@ document.getElementById('playPause').addEventListener('click', () => {
   if (!ytPlayer){
     if (pendingRestoreTrack){
       const t = pendingRestoreTrack;
+      const pos = pendingRestorePosition;
       pendingRestoreTrack = null;
-      playTrack(t);
+      pendingRestorePosition = 0;
+      playTrack(t, pos);
     }
     return;
   }
