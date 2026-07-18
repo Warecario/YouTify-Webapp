@@ -74,7 +74,9 @@ async function handleSpotifySearch(url, env) {
 
   const token = await getSpotifyToken(env);
   const res = await fetch(
-    `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track,playlist&limit=20`,
+    // Spotify's Feb 2026 changelog capped GET /search's limit at 10
+    // (previously 50) — using anything higher now gets rejected.
+    `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track,playlist&limit=10`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!res.ok) {
