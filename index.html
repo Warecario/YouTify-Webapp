@@ -13,7 +13,8 @@
 
 <div class="app-shell">
   <div class="sidebar">
-    <div>
+    <div class="brand" id="brandHome" title="Home">
+      <img id="siteLogo" class="site-logo" src="images/logo.svg" alt="" onerror="this.style.display='none';">
       <h1 class="wordmark">YouTify</h1>
       <p class="tagline">Spotify's metadata.<br>YouTube's engine.</p>
     </div>
@@ -38,11 +39,12 @@
   <div class="main">
     <div class="main-scroll">
       <div class="search-wrap">
-        <input id="query" type="text" placeholder="Search for songs or public playlists..." autocomplete="off">
+        <input id="query" type="text" placeholder="Search for songs..." autocomplete="off">
         <button id="searchBtn">Search</button>
       </div>
       <p id="status"></p>
-      <div id="results"></div>
+      <div id="homeView"></div>
+      <div id="results" style="display:none;"></div>
     </div>
   </div>
 </div>

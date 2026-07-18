@@ -5,7 +5,6 @@
  * safe, key-free endpoints for the static frontend to call:
  *
  *   GET /api/spotify-search?q=...
- *   GET /api/spotify-playlist-tracks?id=...
  *   GET /api/youtube-search?title=...&artist=...
  *
  * Secrets are read from Worker environment variables (never hardcoded
@@ -76,7 +75,7 @@ async function handleSpotifySearch(url, env) {
   const res = await fetch(
     // Spotify's Feb 2026 changelog capped GET /search's limit at 10
     // (previously 50) — using anything higher now gets rejected.
-    `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track,playlist&limit=10`,
+    `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=10`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!res.ok) {
@@ -96,58 +95,6 @@ async function handleSpotifySearch(url, env) {
     },
     external_url: t.external_urls.spotify,
   }));
-
-  // Public playlists — filter out nulls (Spotify sometimes returns null
-  // entries for playlists that have gone private since being indexed).
-  const playlists = (data.playlists?.items || [])
-    .filter(Boolean)
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      owner: p.owner?.display_name || "Unknown",
-      images: p.images,
-      external_url: p.external_urls?.spotify,
-      trackCount: p.tracks?.total ?? null,
-    }));
-
-  return json({ tracks, playlists });
-}
-
-async function handlePlaylistTracks(url, env) {
-  const id = url.searchParams.get("id");
-  if (!id) return json({ error: "Missing id param" }, 400);
-
-  const token = await getSpotifyToken(env);
-  // Spotify's Feb 2026 migration removed GET /playlists/{id}/tracks in
-  // favor of GET /playlists/{id}/items (and item.track became item.item).
-  // Results are paginated, so follow "next" until the whole playlist
-  // is collected — the frontend only gets one call, so this has to
-  // happen here rather than client-side.
-  let nextUrl = `https://api.spotify.com/v1/playlists/${encodeURIComponent(id)}/items?limit=50`;
-  let tracks = [];
-  let pageCount = 0;
-  const MAX_PAGES = 40; // safety cap — ~2000 tracks, far past any real playlist
-
-  while (nextUrl && pageCount < MAX_PAGES) {
-    const res = await fetch(nextUrl, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) {
-      const bodyText = await res.text();
-      return json({ error: "Playlist lookup failed", status: res.status, detail: bodyText }, 502);
-    }
-    const data = await res.json();
-    const pageTracks = (data.items || [])
-      .map((entry) => entry.item)
-      .filter(Boolean)
-      .map((t) => ({
-        name: t.name,
-        artists: t.artists.map((a) => a.name),
-        album: { images: t.album.images },
-        external_url: t.external_urls?.spotify,
-      }));
-    tracks = tracks.concat(pageTracks);
-    nextUrl = data.next;
-    pageCount++;
-  }
 
   return json({ tracks });
 }
@@ -182,9 +129,6 @@ export default {
     try {
       if (url.pathname === "/api/spotify-search") {
         return await handleSpotifySearch(url, env);
-      }
-      if (url.pathname === "/api/spotify-playlist-tracks") {
-        return await handlePlaylistTracks(url, env);
       }
       if (url.pathname === "/api/youtube-search") {
         return await handleYouTubeSearch(url, env);

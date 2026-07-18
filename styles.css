@@ -34,6 +34,11 @@
     flex-direction:column;
     gap:28px;
   }
+  .brand{ cursor:pointer; }
+  .site-logo{
+    width:36px; height:36px; object-fit:contain;
+    display:block; margin-bottom:10px;
+  }
   .wordmark{
     font-family:'Archivo Black', sans-serif;
     font-size:1.6rem;
@@ -144,25 +149,58 @@
     letter-spacing:0.06em; margin:18px 0 8px;
   }
   .section-label:first-child{ margin-top:0; }
-  .playlist-result-row{
-    display:flex; align-items:center; gap:14px;
-    border-radius:8px; padding:8px 10px; cursor:pointer;
+
+  /* ---------- Home view (Spotify-grid x YouTube-grid hybrid) ---------- */
+  .home-greeting{
+    font-family:'Archivo Black', sans-serif;
+    font-size:1.4rem; margin:0 0 20px;
+  }
+  .quick-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
+    gap:10px;
+    margin-bottom:28px;
+  }
+  .quick-card{
+    display:flex; align-items:center; gap:12px;
+    background:var(--panel); border-radius:8px;
+    overflow:hidden; cursor:pointer;
     transition:background 0.12s ease;
   }
-  .playlist-result-row:hover, .playlist-result-row.active{ background:var(--panel-hover); }
-  .playlist-result-row img{
-    width:44px; height:44px; border-radius:4px; object-fit:cover; flex-shrink:0;
+  .quick-card:hover{ background:var(--panel-hover); }
+  .quick-card img{
+    width:56px; height:56px; object-fit:cover; flex-shrink:0;
     background:var(--panel-hover);
   }
-  .playlist-result-meta{ min-width:0; }
-  .playlist-result-title{
-    font-weight:600; font-size:0.95rem;
+  .quick-card-title{
+    font-weight:600; font-size:0.88rem;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
-  .playlist-result-row.active .playlist-result-title{ color:var(--accent); }
-  .playlist-result-sub{
-    color:var(--muted); font-size:0.8rem;
+
+  .playlist-grid-view{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));
+    gap:18px;
+    margin-bottom:28px;
+  }
+  .grid-card{ cursor:pointer; }
+  .grid-card-art{
+    width:100%; aspect-ratio:1/1; border-radius:8px; object-fit:cover;
+    background:var(--panel);
+    box-shadow:0 4px 16px rgba(0,0,0,0.35);
+    transition:transform 0.15s ease;
+  }
+  .grid-card:hover .grid-card-art{ transform:scale(1.03); }
+  .grid-card-title{
+    font-weight:600; font-size:0.85rem; margin-top:8px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .grid-card-sub{
+    color:var(--muted); font-size:0.75rem; margin-top:2px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .home-empty-hint{
+    color:var(--muted); font-size:0.85rem; margin-top:4px;
   }
 
   /* ---------- Auth + playlists ---------- */

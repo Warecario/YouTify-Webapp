@@ -116,9 +116,11 @@ let shuffleOrder = []; // indices into currentResults, used when shuffleOn
 let historyStack = []; // indices actually played, most recent last — powers real "back"
 let forwardStack = []; // indices to redo forward into after going back
 let recentlyPlayed = []; // last few tracks played this session, independent of the current queue
+let cachedUserPlaylists = []; // last fetched /me/playlists items, used to render the Home grid
 
 const statusEl = document.getElementById('status');
 const resultsEl = document.getElementById('results');
+const homeViewEl = document.getElementById('homeView');
 const queryEl = document.getElementById('query');
 const playerBarEl = document.getElementById('player-bar');
 const prevBtn = document.getElementById('prevBtn');
@@ -303,6 +305,7 @@ async function loadUserPlaylists(){
     const data = await res.json();
     labelEl.style.display = 'block';
     listEl.innerHTML = '';
+    cachedUserPlaylists = data.items || [];
 
     const likedRow = document.createElement('div');
     likedRow.className = 'playlist-row liked-songs-row';
@@ -317,6 +320,8 @@ async function loadUserPlaylists(){
       row.addEventListener('click', () => loadPlaylistTracks(pl.id, pl.name, row));
       listEl.appendChild(row);
     });
+
+    if (homeViewEl.style.display !== 'none') renderHomeView();
   } catch (err){
     setStatus(err.message);
   }
@@ -325,6 +330,7 @@ async function loadUserPlaylists(){
 async function loadLikedSongs(rowEl){
   document.querySelectorAll('.playlist-row').forEach(r => r.classList.remove('active'));
   if (rowEl) rowEl.classList.add('active');
+  showSearchResults();
 
   setStatus('Loading Liked Songs…');
   resultsEl.innerHTML = '';
@@ -371,6 +377,7 @@ async function loadLikedSongs(rowEl){
 async function loadPlaylistTracks(playlistId, playlistName, rowEl){
   document.querySelectorAll('.playlist-row').forEach(r => r.classList.remove('active'));
   if (rowEl) rowEl.classList.add('active');
+  showSearchResults();
 
   setStatus(`Loading "${playlistName}"…`);
   resultsEl.innerHTML = '';
@@ -420,15 +427,7 @@ async function searchSpotify(q){
   const url = `${PROXY_BASE_URL}/api/spotify-search?q=${encodeURIComponent(q)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("Search failed — is the proxy deployed and reachable?");
-  return res.json(); // { tracks: [...], playlists: [...] }
-}
-
-async function fetchPublicPlaylistTracks(playlistId){
-  const url = `${PROXY_BASE_URL}/api/spotify-playlist-tracks?id=${encodeURIComponent(playlistId)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Playlist lookup failed — is the proxy deployed and reachable?");
-  const data = await res.json();
-  return data.tracks;
+  return res.json(); // { tracks: [...] }
 }
 
 async function findYouTubeVideoId(title, artist){
@@ -536,68 +535,15 @@ function updateProgress(){
 
 async function runSearch(){
   const q = queryEl.value.trim();
-  if (!q) return;
+  if (!q){ showHome(); return; }
+  showSearchResults();
   resultsEl.innerHTML = '';
   setStatus('Searching Spotify…');
   try {
-    const { tracks = [], playlists = [] } = (await searchSpotify(q)) || {};
-    if (!tracks.length && !playlists.length){ setStatus('No matches found.'); return; }
+    const { tracks = [] } = (await searchSpotify(q)) || {};
+    if (!tracks.length){ setStatus('No matches found.'); return; }
     setStatus('');
     currentPlaylistContext = null;
-    currentResults = tracks;
-    currentIndex = -1;
-    historyStack = [];
-    forwardStack = [];
-
-    if (tracks.length){
-      const tracksLabel = document.createElement('div');
-      tracksLabel.className = 'section-label';
-      tracksLabel.textContent = 'Songs';
-      resultsEl.appendChild(tracksLabel);
-      tracks.forEach((t, i) => renderResultRow(t, i));
-    }
-
-    if (playlists.length){
-      const plLabel = document.createElement('div');
-      plLabel.className = 'section-label';
-      plLabel.textContent = 'Public Playlists';
-      resultsEl.appendChild(plLabel);
-      playlists.forEach(p => renderPlaylistResultRow(p));
-    }
-  } catch (err){
-    setStatus(err.message);
-  }
-}
-
-function renderPlaylistResultRow(playlist){
-  const row = document.createElement('div');
-  row.className = 'playlist-result-row';
-  const art = playlist.images?.[0]?.url || '';
-  const sub = playlist.trackCount != null
-    ? `By ${playlist.owner} · ${playlist.trackCount} tracks`
-    : `By ${playlist.owner}`;
-  row.innerHTML = `
-    <img src="${art}" alt="">
-    <div class="playlist-result-meta">
-      <div class="playlist-result-title">${playlist.name}</div>
-      <div class="playlist-result-sub">${sub}</div>
-    </div>
-  `;
-  row.addEventListener('click', () => loadPublicPlaylistTracks(playlist.id, playlist.name, row));
-  resultsEl.appendChild(row);
-}
-
-async function loadPublicPlaylistTracks(playlistId, playlistName, rowEl){
-  document.querySelectorAll('.playlist-result-row, .playlist-row').forEach(r => r.classList.remove('active'));
-  if (rowEl) rowEl.classList.add('active');
-
-  setStatus(`Loading "${playlistName}"…`);
-  resultsEl.innerHTML = '';
-  try {
-    const tracks = await fetchPublicPlaylistTracks(playlistId);
-    if (!tracks.length){ setStatus('This playlist has no tracks.'); return; }
-    setStatus('');
-    currentPlaylistContext = { id: playlistId, name: playlistName, source: 'public' };
     currentResults = tracks;
     currentIndex = -1;
     historyStack = [];
@@ -605,6 +551,119 @@ async function loadPublicPlaylistTracks(playlistId, playlistName, rowEl){
     tracks.forEach((t, i) => renderResultRow(t, i));
   } catch (err){
     setStatus(err.message);
+  }
+}
+
+/* ---------- Home view ---------- */
+
+function showHome(){
+  queryEl.value = '';
+  setStatus('');
+  homeViewEl.style.display = 'block';
+  resultsEl.style.display = 'none';
+  renderHomeView();
+}
+
+function showSearchResults(){
+  homeViewEl.style.display = 'none';
+  resultsEl.style.display = 'block';
+}
+
+function getGreeting(){
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function renderHomeView(){
+  homeViewEl.innerHTML = '';
+
+  const greeting = document.createElement('h2');
+  greeting.className = 'home-greeting';
+  greeting.textContent = getGreeting();
+  homeViewEl.appendChild(greeting);
+
+  // Quick access row (Spotify-style): Liked Songs shortcut + a few
+  // recently played tracks, as small clickable rectangles.
+  const quickItems = [];
+  if (spotifyAccessToken) quickItems.push({ type: 'liked' });
+  recentlyPlayed.slice(0, 5).forEach(t => quickItems.push({ type: 'track', track: t }));
+
+  if (quickItems.length){
+    const quickGrid = document.createElement('div');
+    quickGrid.className = 'quick-grid';
+    quickItems.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'quick-card';
+      if (item.type === 'liked'){
+        card.innerHTML = `<div class="quick-card-title" style="padding-left:12px;">Liked Songs</div>`;
+        card.addEventListener('click', () => loadLikedSongs());
+      } else {
+        const art = item.track.album.images[0]?.url || '';
+        card.innerHTML = `<img src="${art}" alt=""><div class="quick-card-title">${item.track.name}</div>`;
+        card.addEventListener('click', () => playSingleTrack(item.track));
+      }
+      quickGrid.appendChild(card);
+    });
+    homeViewEl.appendChild(quickGrid);
+  }
+
+  // Your Playlists — grid view (YouTube-style thumbnail grid, Spotify-style cards)
+  if (cachedUserPlaylists.length){
+    const label = document.createElement('div');
+    label.className = 'section-label';
+    label.textContent = 'Your Playlists';
+    homeViewEl.appendChild(label);
+
+    const grid = document.createElement('div');
+    grid.className = 'playlist-grid-view';
+    cachedUserPlaylists.forEach(pl => {
+      const card = document.createElement('div');
+      card.className = 'grid-card';
+      const art = pl.images?.[0]?.url || '';
+      card.innerHTML = `
+        <img class="grid-card-art" src="${art}" alt="">
+        <div class="grid-card-title">${pl.name}</div>
+        <div class="grid-card-sub">${pl.tracks?.total ?? ''} tracks</div>
+      `;
+      card.addEventListener('click', () => loadPlaylistTracks(pl.id, pl.name));
+      grid.appendChild(card);
+    });
+    homeViewEl.appendChild(grid);
+  }
+
+  // Recently Played — grid view
+  if (recentlyPlayed.length){
+    const label = document.createElement('div');
+    label.className = 'section-label';
+    label.textContent = 'Recently Played';
+    homeViewEl.appendChild(label);
+
+    const grid = document.createElement('div');
+    grid.className = 'playlist-grid-view';
+    recentlyPlayed.forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'grid-card';
+      const art = t.album.images[0]?.url || '';
+      card.innerHTML = `
+        <img class="grid-card-art" src="${art}" alt="">
+        <div class="grid-card-title">${t.name}</div>
+        <div class="grid-card-sub">${t.artists.join(', ')}</div>
+      `;
+      card.addEventListener('click', () => playSingleTrack(t));
+      grid.appendChild(card);
+    });
+    homeViewEl.appendChild(grid);
+  }
+
+  if (!quickItems.length && !cachedUserPlaylists.length && !recentlyPlayed.length){
+    const hint = document.createElement('p');
+    hint.className = 'home-empty-hint';
+    hint.textContent = spotifyAccessToken
+      ? 'Nothing here yet — search for a song to get started.'
+      : 'Log in with Spotify to see your playlists here, or search for a song to get started.';
+    homeViewEl.appendChild(hint);
   }
 }
 
@@ -787,6 +846,7 @@ function recordRecentlyPlayed(track){
   recentlyPlayed.unshift(track);
   if (recentlyPlayed.length > 8) recentlyPlayed.length = 8;
   renderRecentlyPlayed();
+  if (homeViewEl.style.display !== 'none') renderHomeView();
 }
 
 function renderRecentlyPlayed(){
@@ -841,15 +901,13 @@ async function restoreSession(){
   };
 
   const savedPlaylistRaw = getCookie('youtify_last_playlist');
-  if (savedPlaylistRaw && (spotifyAccessToken || JSON.parse(savedPlaylistRaw).source === 'public')){
+  if (savedPlaylistRaw && spotifyAccessToken){
     try {
       const pl = JSON.parse(savedPlaylistRaw);
-      if (pl.source === 'user' && spotifyAccessToken){
+      if (pl.source === 'user'){
         await loadPlaylistTracks(pl.id, pl.name);
-      } else if (pl.source === 'liked' && spotifyAccessToken){
+      } else if (pl.source === 'liked'){
         await loadLikedSongs();
-      } else if (pl.source === 'public'){
-        await loadPublicPlaylistTracks(pl.id, pl.name);
       }
       const idx = currentResults.findIndex(t =>
         t.name === track.name && t.artists.join(',') === track.artists.join(','));
@@ -894,6 +952,8 @@ mpVolumeIcon.innerHTML = ICONS.volHigh;
 
 initSwatches();
 document.getElementById('loginBtn').addEventListener('click', startSpotifyLogin);
+document.getElementById('brandHome').addEventListener('click', showHome);
+showHome();
 handleSpotifyRedirect().then(restoreSession);
 
 const settingsModal = document.getElementById('settingsModal');
@@ -1008,6 +1068,7 @@ document.getElementById('clearDataBtn').addEventListener('click', () => {
 
 document.getElementById('searchBtn').addEventListener('click', runSearch);
 queryEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
+queryEl.addEventListener('input', () => { if (!queryEl.value.trim()) showHome(); });
 
 function togglePlayPause(){
   if (!ytPlayer){
