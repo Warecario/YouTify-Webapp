@@ -458,14 +458,17 @@ async function ensurePlayer(videoId){
 function onPlayerStateChange(e){
   const disc = document.getElementById('disc');
   const playPauseBtn = document.getElementById('playPause');
+  const mpPlayPauseBtn = document.getElementById('mpPlayPause');
   if (e.data === YT.PlayerState.PLAYING){
     disc.classList.add('playing');
     playPauseBtn.innerHTML = ICONS.pause;
+    mpPlayPauseBtn.innerHTML = ICONS.pause;
     currentDuration = ytPlayer.getDuration();
     startProgressLoop();
   } else {
     disc.classList.remove('playing');
     playPauseBtn.innerHTML = ICONS.play;
+    mpPlayPauseBtn.innerHTML = ICONS.play;
     if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED){
       stopProgressLoop();
     }
@@ -502,6 +505,7 @@ function updateProgress(){
   document.getElementById('progressFill').style.width = pct + '%';
   document.getElementById('timeCur').textContent = formatTime(cur);
   document.getElementById('timeDur').textContent = formatTime(dur);
+  document.getElementById('mpProgressFill').style.width = pct + '%';
 
   // Save roughly every 2 seconds (updateProgress runs every 400ms)
   // rather than on every tick.
@@ -719,15 +723,24 @@ function toggleRepeat(){
   updateTransportButtons();
 }
 
+function updateNowPlayingUI(track){
+  const art = track.album.images[0]?.url || '';
+  const artists = track.artists.join(', ');
+  document.getElementById('nowArt').src = art;
+  document.getElementById('nowTitle').textContent = track.name;
+  document.getElementById('nowArtist').textContent = artists;
+  document.getElementById('spotifyLink').href = track.external_url || '#';
+  document.getElementById('mpArt').src = art;
+  document.getElementById('mpTitle').textContent = track.name;
+  document.getElementById('mpArtist').textContent = artists;
+}
+
 async function playTrack(track, resumeAtSeconds){
   const artists = track.artists.join(', ');
   setStatus('Finding playback source on YouTube…');
 
   playerBarEl.style.display = 'flex';
-  document.getElementById('nowArt').src = track.album.images[0]?.url || '';
-  document.getElementById('nowTitle').textContent = track.name;
-  document.getElementById('nowArtist').textContent = artists;
-  document.getElementById('spotifyLink').href = track.external_url;
+  updateNowPlayingUI(track);
   saveNowPlayingCookie(track);
   recordRecentlyPlayed(track);
 
@@ -837,10 +850,7 @@ async function restoreSession(){
   const savedPosition = parseInt(getCookie('youtify_last_position'), 10);
   pendingRestorePosition = Number.isFinite(savedPosition) ? savedPosition : 0;
   playerBarEl.style.display = 'flex';
-  document.getElementById('nowArt').src = track.album.images[0]?.url || '';
-  document.getElementById('nowTitle').textContent = track.name;
-  document.getElementById('nowArtist').textContent = track.artists.join(', ');
-  document.getElementById('spotifyLink').href = track.external_url || '#';
+  updateNowPlayingUI(track);
   if (pendingRestorePosition > 0){
     document.getElementById('timeCur').textContent = formatTime(pendingRestorePosition);
   }
@@ -854,6 +864,9 @@ prevBtn.innerHTML = ICONS.prev;
 nextBtn.innerHTML = ICONS.next;
 document.getElementById('playPause').innerHTML = ICONS.play;
 volumeIcon.innerHTML = ICONS.volHigh;
+document.getElementById('mpPrev').innerHTML = ICONS.prev;
+document.getElementById('mpNext').innerHTML = ICONS.next;
+document.getElementById('mpPlayPause').innerHTML = ICONS.play;
 
 initSwatches();
 document.getElementById('loginBtn').addEventListener('click', startSpotifyLogin);
@@ -877,9 +890,64 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
   settingsModal.classList.remove('open');
 });
 
-document.getElementById('miniToggleBtn').addEventListener('click', () => {
-  playerBarEl.classList.toggle('mini');
-});
+let pipWindow = null;
+
+async function toggleMiniPlayer(){
+  // Document Picture-in-Picture is Chrome/Edge only today. Where it's
+  // not available, fall back to the old in-page collapsed bar instead
+  // of doing nothing.
+  if (!('documentPictureInPicture' in window)){
+    playerBarEl.classList.toggle('mini');
+    return;
+  }
+
+  if (pipWindow){
+    pipWindow.close();
+    return;
+  }
+
+  const miniRoot = document.getElementById('miniPlayerRoot');
+
+  pipWindow = await documentPictureInPicture.requestWindow({
+    width: 300,
+    height: 92,
+  });
+
+  // The floating window starts as a blank document — copy over the
+  // page's styles so the moved-in controls aren't unstyled.
+  [...document.styleSheets].forEach((styleSheet) => {
+    try {
+      const cssText = [...styleSheet.cssRules].map(rule => rule.cssText).join('\n');
+      const style = document.createElement('style');
+      style.textContent = cssText;
+      pipWindow.document.head.appendChild(style);
+    } catch (_) {
+      // Cross-origin stylesheets (e.g. Google Fonts) can't be read
+      // this way — link them directly into the new window instead.
+      if (styleSheet.href){
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = styleSheet.href;
+        pipWindow.document.head.appendChild(link);
+      }
+    }
+  });
+  pipWindow.document.body.style.margin = '0';
+
+  // Move the real node (not a clone) so every listener on it keeps
+  // working untouched, and audio keeps playing from the hidden
+  // YouTube player back in the main document the whole time.
+  miniRoot.style.display = 'flex';
+  pipWindow.document.body.appendChild(miniRoot);
+
+  pipWindow.addEventListener('pagehide', () => {
+    miniRoot.style.display = 'none';
+    document.body.appendChild(miniRoot);
+    pipWindow = null;
+  }, { once: true });
+}
+
+document.getElementById('miniToggleBtn').addEventListener('click', toggleMiniPlayer);
 
 document.getElementById('clearDataBtn').addEventListener('click', () => {
   ['youtify_accent', 'youtify_spotify_refresh', 'youtify_last_track', 'youtify_last_playlist', 'youtify_last_position']
@@ -890,7 +958,7 @@ document.getElementById('clearDataBtn').addEventListener('click', () => {
 document.getElementById('searchBtn').addEventListener('click', runSearch);
 queryEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
 
-document.getElementById('playPause').addEventListener('click', () => {
+function togglePlayPause(){
   if (!ytPlayer){
     if (pendingRestoreTrack){
       const t = pendingRestoreTrack;
@@ -904,6 +972,17 @@ document.getElementById('playPause').addEventListener('click', () => {
   const state = ytPlayer.getPlayerState();
   if (state === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
   else ytPlayer.playVideo();
+}
+
+document.getElementById('playPause').addEventListener('click', togglePlayPause);
+document.getElementById('mpPlayPause').addEventListener('click', togglePlayPause);
+document.getElementById('mpNext').addEventListener('click', goNext);
+document.getElementById('mpPrev').addEventListener('click', goPrev);
+document.getElementById('mpProgressTrack').addEventListener('click', (e) => {
+  if (!ytPlayer || !currentDuration) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  const pct = (e.clientX - rect.left) / rect.width;
+  ytPlayer.seekTo(currentDuration * pct, true);
 });
 
 nextBtn.addEventListener('click', goNext);
