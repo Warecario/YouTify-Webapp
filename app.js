@@ -522,8 +522,13 @@ function highlightActiveRow(){
 }
 
 function updateTransportButtons(){
-  prevBtn.disabled = historyStack.length === 0;
-  nextBtn.disabled = forwardStack.length === 0 && nextIndexFrom(currentIndex) === -1;
+  if (shuffleOn){
+    prevBtn.disabled = historyStack.length === 0;
+    nextBtn.disabled = forwardStack.length === 0 && nextShuffleIndex(currentIndex) === -1;
+  } else {
+    prevBtn.disabled = currentIndex <= 0 && repeatMode !== 'all';
+    nextBtn.disabled = currentIndex < 0 || (currentIndex >= currentResults.length - 1 && repeatMode !== 'all');
+  }
 }
 
 function generateShuffleOrder(){
@@ -535,15 +540,14 @@ function generateShuffleOrder(){
   return arr;
 }
 
-function nextIndexFrom(index){
-  if (shuffleOn){
-    if (!shuffleOrder.length) shuffleOrder = generateShuffleOrder();
-    let pos = shuffleOrder.indexOf(index);
-    pos = (pos + 1) % shuffleOrder.length;
-    return shuffleOrder[pos];
+// Only used while shuffle is on — picks the next track in the shuffled order.
+function nextShuffleIndex(index){
+  if (!shuffleOrder.length || shuffleOrder.length !== currentResults.length){
+    shuffleOrder = generateShuffleOrder();
   }
-  if (index < currentResults.length - 1) return index + 1;
-  return repeatMode === 'all' ? 0 : -1;
+  let pos = shuffleOrder.indexOf(index);
+  pos = (pos + 1) % shuffleOrder.length;
+  return shuffleOrder[pos];
 }
 
 async function playAt(index){
@@ -554,37 +558,67 @@ async function playAt(index){
   await playTrack(currentResults[index]);
 }
 
-// A manual pick (clicking a row, or a playlist) — always the start of a
-// new forward path, so any old "redo forward" history is discarded.
+// A manual pick (clicking a row). In shuffle mode this also updates the
+// back/forward history; in normal mode, position alone is enough.
 function playFromRow(index){
-  if (currentIndex !== -1) historyStack.push(currentIndex);
-  forwardStack = [];
+  if (shuffleOn){
+    if (currentIndex !== -1) historyStack.push(currentIndex);
+    forwardStack = [];
+  }
   playAt(index);
 }
 
 function goNext(){
   if (currentIndex === -1) return;
-  if (forwardStack.length){
+
+  if (shuffleOn){
+    if (forwardStack.length){
+      historyStack.push(currentIndex);
+      playAt(forwardStack.pop());
+      return;
+    }
+    const next = nextShuffleIndex(currentIndex);
+    if (next === -1) return;
     historyStack.push(currentIndex);
-    playAt(forwardStack.pop());
+    playAt(next);
     return;
   }
-  const next = nextIndexFrom(currentIndex);
-  if (next === -1) return;
-  historyStack.push(currentIndex);
-  playAt(next);
+
+  // Normal mode: always just move one position forward — no history
+  // stack needed, works no matter how you got to the current track.
+  let next;
+  if (currentIndex < currentResults.length - 1) next = currentIndex + 1;
+  else next = repeatMode === 'all' ? 0 : -1;
+  if (next !== -1) playAt(next);
 }
 
 function goPrev(){
-  if (!historyStack.length) return;
-  forwardStack.push(currentIndex);
-  playAt(historyStack.pop());
+  if (currentIndex === -1) return;
+
+  if (shuffleOn){
+    if (!historyStack.length) return;
+    forwardStack.push(currentIndex);
+    playAt(historyStack.pop());
+    return;
+  }
+
+  // Normal mode: always just move one position back.
+  let prev;
+  if (currentIndex > 0) prev = currentIndex - 1;
+  else prev = repeatMode === 'all' ? currentResults.length - 1 : -1;
+  if (prev !== -1) playAt(prev);
 }
 
 function toggleShuffle(){
   shuffleOn = !shuffleOn;
   shuffleBtn.classList.toggle('toggled', shuffleOn);
-  if (shuffleOn) shuffleOrder = generateShuffleOrder();
+  if (shuffleOn){
+    shuffleOrder = generateShuffleOrder();
+    // Fresh history for the new shuffle sequence — mixing in whatever
+    // you did in linear mode before wouldn't make sense here.
+    historyStack = [];
+    forwardStack = [];
+  }
   updateTransportButtons();
 }
 
