@@ -705,6 +705,7 @@ function goPrev(){
 function toggleShuffle(){
   shuffleOn = !shuffleOn;
   shuffleBtn.classList.toggle('toggled', shuffleOn);
+  document.getElementById('mpShuffle').classList.toggle('toggled', shuffleOn);
   if (shuffleOn){
     shuffleOrder = generateShuffleOrder();
     // Fresh history for the new shuffle sequence — mixing in whatever
@@ -718,8 +719,12 @@ function toggleShuffle(){
 function toggleRepeat(){
   const modes = ['off', 'all', 'one'];
   repeatMode = modes[(modes.indexOf(repeatMode) + 1) % modes.length];
+  const icon = repeatMode === 'one' ? ICONS.repeatOne : ICONS.repeat;
   repeatBtn.classList.toggle('toggled', repeatMode !== 'off');
-  repeatBtn.innerHTML = repeatMode === 'one' ? ICONS.repeatOne : ICONS.repeat;
+  repeatBtn.innerHTML = icon;
+  const mpRepeatBtn = document.getElementById('mpRepeat');
+  mpRepeatBtn.classList.toggle('toggled', repeatMode !== 'off');
+  mpRepeatBtn.innerHTML = icon;
   updateTransportButtons();
 }
 
@@ -867,6 +872,9 @@ volumeIcon.innerHTML = ICONS.volHigh;
 document.getElementById('mpPrev').innerHTML = ICONS.prev;
 document.getElementById('mpNext').innerHTML = ICONS.next;
 document.getElementById('mpPlayPause').innerHTML = ICONS.play;
+document.getElementById('mpShuffle').innerHTML = ICONS.shuffle;
+document.getElementById('mpRepeat').innerHTML = ICONS.repeat;
+document.getElementById('mpVolumeIcon').innerHTML = ICONS.volHigh;
 
 initSwatches();
 document.getElementById('loginBtn').addEventListener('click', startSpotifyLogin);
@@ -909,8 +917,8 @@ async function toggleMiniPlayer(){
   const miniRoot = document.getElementById('miniPlayerRoot');
 
   pipWindow = await documentPictureInPicture.requestWindow({
-    width: 300,
-    height: 92,
+    width: 340,
+    height: 60,
   });
 
   // The floating window starts as a blank document — copy over the
@@ -989,24 +997,36 @@ nextBtn.addEventListener('click', goNext);
 prevBtn.addEventListener('click', goPrev);
 shuffleBtn.addEventListener('click', toggleShuffle);
 repeatBtn.addEventListener('click', toggleRepeat);
+document.getElementById('mpShuffle').addEventListener('click', toggleShuffle);
+document.getElementById('mpRepeat').addEventListener('click', toggleRepeat);
 
+const mpVolumeSlider = document.getElementById('mpVolumeSlider');
+const mpVolumeIcon = document.getElementById('mpVolumeIcon');
 let mutedVolume = null;
-volumeSlider.addEventListener('input', () => {
-  const v = Number(volumeSlider.value);
+
+function applyVolume(v, sourceEl){
   if (ytPlayer) ytPlayer.setVolume(v);
-  volumeIcon.innerHTML = v === 0 ? ICONS.volMute : v < 50 ? ICONS.volMid : ICONS.volHigh;
+  const icon = v === 0 ? ICONS.volMute : v < 50 ? ICONS.volMid : ICONS.volHigh;
+  volumeIcon.innerHTML = icon;
+  mpVolumeIcon.innerHTML = icon;
+  if (sourceEl !== volumeSlider) volumeSlider.value = v;
+  if (sourceEl !== mpVolumeSlider) mpVolumeSlider.value = v;
   mutedVolume = null;
-});
-volumeIcon.addEventListener('click', () => {
+}
+
+volumeSlider.addEventListener('input', () => applyVolume(Number(volumeSlider.value), volumeSlider));
+mpVolumeSlider.addEventListener('input', () => applyVolume(Number(mpVolumeSlider.value), mpVolumeSlider));
+
+function toggleMute(){
   if (mutedVolume === null){
     mutedVolume = volumeSlider.value;
-    volumeSlider.value = 0;
+    applyVolume(0);
   } else {
-    volumeSlider.value = mutedVolume;
-    mutedVolume = null;
+    applyVolume(Number(mutedVolume));
   }
-  volumeSlider.dispatchEvent(new Event('input'));
-});
+}
+volumeIcon.addEventListener('click', toggleMute);
+mpVolumeIcon.addEventListener('click', toggleMute);
 
 // Keyboard shortcuts — ignored while typing in the search box
 document.addEventListener('keydown', (e) => {
