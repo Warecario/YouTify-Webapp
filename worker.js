@@ -120,25 +120,34 @@ async function handlePlaylistTracks(url, env) {
   const token = await getSpotifyToken(env);
   // Spotify's Feb 2026 migration removed GET /playlists/{id}/tracks in
   // favor of GET /playlists/{id}/items (and item.track became item.item).
-  const res = await fetch(
-    `https://api.spotify.com/v1/playlists/${encodeURIComponent(id)}/items?limit=50`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!res.ok) {
-    const bodyText = await res.text();
-    return json({ error: "Playlist lookup failed", status: res.status, detail: bodyText }, 502);
-  }
+  // Results are paginated, so follow "next" until the whole playlist
+  // is collected — the frontend only gets one call, so this has to
+  // happen here rather than client-side.
+  let nextUrl = `https://api.spotify.com/v1/playlists/${encodeURIComponent(id)}/items?limit=50`;
+  let tracks = [];
+  let pageCount = 0;
+  const MAX_PAGES = 40; // safety cap — ~2000 tracks, far past any real playlist
 
-  const data = await res.json();
-  const tracks = (data.items || [])
-    .map((entry) => entry.item)
-    .filter(Boolean)
-    .map((t) => ({
-      name: t.name,
-      artists: t.artists.map((a) => a.name),
-      album: { images: t.album.images },
-      external_url: t.external_urls?.spotify,
-    }));
+  while (nextUrl && pageCount < MAX_PAGES) {
+    const res = await fetch(nextUrl, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      const bodyText = await res.text();
+      return json({ error: "Playlist lookup failed", status: res.status, detail: bodyText }, 502);
+    }
+    const data = await res.json();
+    const pageTracks = (data.items || [])
+      .map((entry) => entry.item)
+      .filter(Boolean)
+      .map((t) => ({
+        name: t.name,
+        artists: t.artists.map((a) => a.name),
+        album: { images: t.album.images },
+        external_url: t.external_urls?.spotify,
+      }));
+    tracks = tracks.concat(pageTracks);
+    nextUrl = data.next;
+    pageCount++;
+  }
 
   return json({ tracks });
 }

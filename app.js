@@ -234,12 +234,13 @@ async function refreshSpotifyToken(){
   return true;
 }
 
-async function spotifyUserFetch(path){
-  let res = await fetch(`https://api.spotify.com/v1/${path}`, {
+async function spotifyUserFetch(pathOrUrl){
+  const url = pathOrUrl.startsWith('http') ? pathOrUrl : `https://api.spotify.com/v1/${pathOrUrl}`;
+  let res = await fetch(url, {
     headers: { Authorization: `Bearer ${spotifyAccessToken}` },
   });
   if (res.status === 401 && await refreshSpotifyToken()){
-    res = await fetch(`https://api.spotify.com/v1/${path}`, {
+    res = await fetch(url, {
       headers: { Authorization: `Bearer ${spotifyAccessToken}` },
     });
   }
@@ -294,18 +295,32 @@ async function loadPlaylistTracks(playlistId, playlistName, rowEl){
   try {
     // Feb 2026 migration: /playlists/{id}/tracks was removed in favor
     // of /playlists/{id}/items (and item.track became item.item).
-    const res = await spotifyUserFetch(`playlists/${playlistId}/items?limit=50`);
-    if (!res.ok) throw new Error('Could not load that playlist.');
-    const data = await res.json();
-    const tracks = data.items
-      .map(entry => entry.item)
-      .filter(Boolean)
-      .map(t => ({
-        name: t.name,
-        artists: t.artists.map(a => a.name),
-        album: { images: t.album.images },
-        external_url: t.external_urls?.spotify,
-      }));
+    // Spotify paginates results, so follow "next" until the whole
+    // playlist is loaded rather than stopping at the first page.
+    let nextUrl = `playlists/${playlistId}/items?limit=50`;
+    let tracks = [];
+    let pageCount = 0;
+    const MAX_PAGES = 40; // safety cap — ~2000 tracks, far past any real playlist
+
+    while (nextUrl && pageCount < MAX_PAGES){
+      setStatus(`Loading "${playlistName}"… (${tracks.length} tracks so far)`);
+      const res = await spotifyUserFetch(nextUrl);
+      if (!res.ok) throw new Error('Could not load that playlist.');
+      const data = await res.json();
+      const pageTracks = data.items
+        .map(entry => entry.item)
+        .filter(Boolean)
+        .map(t => ({
+          name: t.name,
+          artists: t.artists.map(a => a.name),
+          album: { images: t.album.images },
+          external_url: t.external_urls?.spotify,
+        }));
+      tracks = tracks.concat(pageTracks);
+      nextUrl = data.next;
+      pageCount++;
+    }
+
     if (!tracks.length){ setStatus('This playlist has no tracks.'); return; }
     setStatus('');
     currentPlaylistContext = { id: playlistId, name: playlistName, source: 'user' };
