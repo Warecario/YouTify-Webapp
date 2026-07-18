@@ -38,6 +38,20 @@ let spotifyRefreshToken = null;
 let currentPlaylistContext = null; // { id, name } or null when playing from search
 let pendingRestoreTrack = null;
 
+/* ---------- Icon set (SVG, no emoji) ---------- */
+const ICONS = {
+  play: `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 4l14 8-14 8V4z"/></svg>`,
+  pause: `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="5" y="4" width="5" height="16"/><rect x="14" y="4" width="5" height="16"/></svg>`,
+  prev: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><rect x="4" y="4" width="2.5" height="16"/><path d="M20 4v16L8 12z"/></svg>`,
+  next: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><rect x="17.5" y="4" width="2.5" height="16"/><path d="M4 4v16l12-8z"/></svg>`,
+  shuffle: `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h3.5c2 0 3.2 1 4.2 2.5M3 18h3.5c2 0 3.2-1 4.2-2.5M14 6h3.5c2 0 3.2 1 4.2 2.5M14 18h3.5c2 0 3.2-1 4.2-2.5"/><path d="M18 3l3 3-3 3M18 15l3 3-3 3"/></svg>`,
+  repeat: `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a3 3 0 0 1 3-3h11M18 4v4M20 17a3 3 0 0 1-3 3H6M6 20v-4"/></svg>`,
+  repeatOne: `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7a3 3 0 0 1 3-3h11M18 4v4M20 17a3 3 0 0 1-3 3H6M6 20v-4"/><text x="10.5" y="16" font-size="8" fill="currentColor" stroke="none" font-family="sans-serif">1</text></svg>`,
+  volHigh: `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  volMid: `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  volMute: `<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+};
+
 /* ---------- Cookie helpers ----------
    Cookies persist across visits on the real deployed site. This is
    client-side-only storage — fine for your own accent preference and
@@ -88,6 +102,9 @@ let currentIndex = -1;
 let shuffleOn = false;
 let repeatMode = 'off'; // 'off' | 'all' | 'one'
 let shuffleOrder = []; // indices into currentResults, used when shuffleOn
+let historyStack = []; // indices actually played, most recent last — powers real "back"
+let forwardStack = []; // indices to redo forward into after going back
+let recentlyPlayed = []; // last few tracks played this session, independent of the current queue
 
 const statusEl = document.getElementById('status');
 const resultsEl = document.getElementById('results');
@@ -362,12 +379,12 @@ function onPlayerStateChange(e){
   const playPauseBtn = document.getElementById('playPause');
   if (e.data === YT.PlayerState.PLAYING){
     disc.classList.add('playing');
-    playPauseBtn.textContent = '⏸';
+    playPauseBtn.innerHTML = ICONS.pause;
     currentDuration = ytPlayer.getDuration();
     startProgressLoop();
   } else {
     disc.classList.remove('playing');
-    playPauseBtn.textContent = '▶';
+    playPauseBtn.innerHTML = ICONS.play;
     if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED){
       stopProgressLoop();
     }
@@ -413,12 +430,14 @@ async function runSearch(){
   resultsEl.innerHTML = '';
   setStatus('Searching Spotify…');
   try {
-    const { tracks, playlists } = await searchSpotify(q);
+    const { tracks = [], playlists = [] } = (await searchSpotify(q)) || {};
     if (!tracks.length && !playlists.length){ setStatus('No matches found.'); return; }
     setStatus('');
     currentPlaylistContext = null;
     currentResults = tracks;
     currentIndex = -1;
+    historyStack = [];
+    forwardStack = [];
 
     if (tracks.length){
       const tracksLabel = document.createElement('div');
@@ -471,6 +490,8 @@ async function loadPublicPlaylistTracks(playlistId, playlistName, rowEl){
     currentPlaylistContext = { id: playlistId, name: playlistName, source: 'public' };
     currentResults = tracks;
     currentIndex = -1;
+    historyStack = [];
+    forwardStack = [];
     tracks.forEach((t, i) => renderResultRow(t, i));
   } catch (err){
     setStatus(err.message);
@@ -490,7 +511,7 @@ function renderResultRow(track, index){
       <div class="result-artist">${artists}</div>
     </div>
   `;
-  row.addEventListener('click', () => playAt(index));
+  row.addEventListener('click', () => playFromRow(index));
   resultsEl.appendChild(row);
 }
 
@@ -501,13 +522,8 @@ function highlightActiveRow(){
 }
 
 function updateTransportButtons(){
-  if (shuffleOn || repeatMode === 'all'){
-    prevBtn.disabled = currentResults.length === 0;
-    nextBtn.disabled = currentResults.length === 0;
-  } else {
-    prevBtn.disabled = currentIndex <= 0;
-    nextBtn.disabled = currentIndex < 0 || currentIndex >= currentResults.length - 1;
-  }
+  prevBtn.disabled = historyStack.length === 0;
+  nextBtn.disabled = forwardStack.length === 0 && nextIndexFrom(currentIndex) === -1;
 }
 
 function generateShuffleOrder(){
@@ -530,17 +546,6 @@ function nextIndexFrom(index){
   return repeatMode === 'all' ? 0 : -1;
 }
 
-function prevIndexFrom(index){
-  if (shuffleOn){
-    if (!shuffleOrder.length) shuffleOrder = generateShuffleOrder();
-    let pos = shuffleOrder.indexOf(index);
-    pos = (pos - 1 + shuffleOrder.length) % shuffleOrder.length;
-    return shuffleOrder[pos];
-  }
-  if (index > 0) return index - 1;
-  return repeatMode === 'all' ? currentResults.length - 1 : -1;
-}
-
 async function playAt(index){
   if (index < 0 || index >= currentResults.length) return;
   currentIndex = index;
@@ -549,13 +554,31 @@ async function playAt(index){
   await playTrack(currentResults[index]);
 }
 
-function goNext(){
-  const next = nextIndexFrom(currentIndex);
-  if (next !== -1) playAt(next);
+// A manual pick (clicking a row, or a playlist) — always the start of a
+// new forward path, so any old "redo forward" history is discarded.
+function playFromRow(index){
+  if (currentIndex !== -1) historyStack.push(currentIndex);
+  forwardStack = [];
+  playAt(index);
 }
+
+function goNext(){
+  if (currentIndex === -1) return;
+  if (forwardStack.length){
+    historyStack.push(currentIndex);
+    playAt(forwardStack.pop());
+    return;
+  }
+  const next = nextIndexFrom(currentIndex);
+  if (next === -1) return;
+  historyStack.push(currentIndex);
+  playAt(next);
+}
+
 function goPrev(){
-  const prev = prevIndexFrom(currentIndex);
-  if (prev !== -1) playAt(prev);
+  if (!historyStack.length) return;
+  forwardStack.push(currentIndex);
+  playAt(historyStack.pop());
 }
 
 function toggleShuffle(){
@@ -569,7 +592,7 @@ function toggleRepeat(){
   const modes = ['off', 'all', 'one'];
   repeatMode = modes[(modes.indexOf(repeatMode) + 1) % modes.length];
   repeatBtn.classList.toggle('toggled', repeatMode !== 'off');
-  repeatBtn.textContent = repeatMode === 'one' ? '🔂' : '🔁';
+  repeatBtn.innerHTML = repeatMode === 'one' ? ICONS.repeatOne : ICONS.repeat;
   updateTransportButtons();
 }
 
@@ -583,6 +606,7 @@ async function playTrack(track){
   document.getElementById('nowArtist').textContent = artists;
   document.getElementById('spotifyLink').href = track.external_url;
   saveNowPlayingCookie(track);
+  recordRecentlyPlayed(track);
 
   try {
     const videoId = await findYouTubeVideoId(track.name, artists);
@@ -592,6 +616,39 @@ async function playTrack(track){
   } catch (err){
     setStatus(err.message);
   }
+}
+
+function recordRecentlyPlayed(track){
+  recentlyPlayed = recentlyPlayed.filter(t =>
+    !(t.name === track.name && t.artists.join(',') === track.artists.join(',')));
+  recentlyPlayed.unshift(track);
+  if (recentlyPlayed.length > 8) recentlyPlayed.length = 8;
+  renderRecentlyPlayed();
+}
+
+function renderRecentlyPlayed(){
+  const listEl = document.getElementById('recentList');
+  const labelEl = document.getElementById('recentLabel');
+  if (!recentlyPlayed.length){ labelEl.style.display = 'none'; listEl.innerHTML = ''; return; }
+  labelEl.style.display = 'block';
+  listEl.innerHTML = '';
+  recentlyPlayed.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'playlist-row';
+    row.textContent = `${t.name} — ${t.artists.join(', ')}`;
+    row.title = row.textContent;
+    row.addEventListener('click', () => playSingleTrack(t));
+    listEl.appendChild(row);
+  });
+}
+
+function playSingleTrack(track){
+  currentPlaylistContext = null;
+  currentResults = [track];
+  currentIndex = -1;
+  historyStack = [];
+  forwardStack = [];
+  playFromRow(0);
 }
 
 /* ---------- Restore on load ---------- */
@@ -655,6 +712,13 @@ async function restoreSession(){
 
 /* ---------- Wiring ---------- */
 
+shuffleBtn.innerHTML = ICONS.shuffle;
+repeatBtn.innerHTML = ICONS.repeat;
+prevBtn.innerHTML = ICONS.prev;
+nextBtn.innerHTML = ICONS.next;
+document.getElementById('playPause').innerHTML = ICONS.play;
+volumeIcon.innerHTML = ICONS.volHigh;
+
 initSwatches();
 document.getElementById('loginBtn').addEventListener('click', startSpotifyLogin);
 handleSpotifyRedirect().then(restoreSession);
@@ -709,7 +773,7 @@ let mutedVolume = null;
 volumeSlider.addEventListener('input', () => {
   const v = Number(volumeSlider.value);
   if (ytPlayer) ytPlayer.setVolume(v);
-  volumeIcon.textContent = v === 0 ? '🔇' : v < 50 ? '🔉' : '🔊';
+  volumeIcon.innerHTML = v === 0 ? ICONS.volMute : v < 50 ? ICONS.volMid : ICONS.volHigh;
   mutedVolume = null;
 });
 volumeIcon.addEventListener('click', () => {

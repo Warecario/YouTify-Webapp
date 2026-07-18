@@ -319,8 +319,9 @@
   .transport-buttons{ display:flex; align-items:center; gap:18px; }
   .transport-buttons button{
     background:none; border:none; color:var(--text);
-    cursor:pointer; font-size:1.1rem; padding:4px;
+    cursor:pointer; padding:4px;
     opacity:0.85;
+    display:flex; align-items:center; justify-content:center;
   }
   .transport-buttons button:hover{ opacity:1; }
   .transport-buttons button:disabled{ opacity:0.3; cursor:default; }
@@ -346,11 +347,10 @@
     width:12px; height:12px; border-radius:50%;
     background:var(--accent); cursor:pointer; border:none;
   }
-  #volumeIcon{ font-size:0.9rem; cursor:pointer; }
+  #volumeIcon{ cursor:pointer; color:var(--muted); display:flex; align-items:center; }
   #playPause{
     background:var(--text); color:var(--bg);
     width:34px; height:34px; border-radius:50%;
-    font-size:0.95rem;
   }
   .progress-row{
     display:flex; align-items:center; gap:10px; width:100%;
