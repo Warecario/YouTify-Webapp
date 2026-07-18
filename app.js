@@ -128,6 +128,24 @@ const repeatBtn = document.getElementById('repeatBtn');
 const volumeSlider = document.getElementById('volumeSlider');
 const volumeIcon = document.getElementById('volumeIcon');
 
+// Cached once, at load time — moving miniPlayerRoot into the PiP
+// window's own document later does NOT invalidate these references,
+// but a fresh document.getElementById('mpX') call after the move would
+// return null (it's scoped to the main document, not wherever the node
+// currently lives). Always use these cached refs, never re-look-up.
+const mpArt = document.getElementById('mpArt');
+const mpTitle = document.getElementById('mpTitle');
+const mpArtist = document.getElementById('mpArtist');
+const mpPlayPause = document.getElementById('mpPlayPause');
+const mpPrev = document.getElementById('mpPrev');
+const mpNext = document.getElementById('mpNext');
+const mpShuffle = document.getElementById('mpShuffle');
+const mpRepeat = document.getElementById('mpRepeat');
+const mpProgressFill = document.getElementById('mpProgressFill');
+const mpProgressTrack = document.getElementById('mpProgressTrack');
+const mpVolumeSlider = document.getElementById('mpVolumeSlider');
+const mpVolumeIcon = document.getElementById('mpVolumeIcon');
+
 function setStatus(msg){ statusEl.textContent = msg; }
 
 /* ---------- Accent color picker ---------- */
@@ -458,17 +476,16 @@ async function ensurePlayer(videoId){
 function onPlayerStateChange(e){
   const disc = document.getElementById('disc');
   const playPauseBtn = document.getElementById('playPause');
-  const mpPlayPauseBtn = document.getElementById('mpPlayPause');
   if (e.data === YT.PlayerState.PLAYING){
     disc.classList.add('playing');
     playPauseBtn.innerHTML = ICONS.pause;
-    mpPlayPauseBtn.innerHTML = ICONS.pause;
+    mpPlayPause.innerHTML = ICONS.pause;
     currentDuration = ytPlayer.getDuration();
     startProgressLoop();
   } else {
     disc.classList.remove('playing');
     playPauseBtn.innerHTML = ICONS.play;
-    mpPlayPauseBtn.innerHTML = ICONS.play;
+    mpPlayPause.innerHTML = ICONS.play;
     if (e.data === YT.PlayerState.PAUSED || e.data === YT.PlayerState.ENDED){
       stopProgressLoop();
     }
@@ -505,7 +522,7 @@ function updateProgress(){
   document.getElementById('progressFill').style.width = pct + '%';
   document.getElementById('timeCur').textContent = formatTime(cur);
   document.getElementById('timeDur').textContent = formatTime(dur);
-  document.getElementById('mpProgressFill').style.width = pct + '%';
+  mpProgressFill.style.width = pct + '%';
 
   // Save roughly every 2 seconds (updateProgress runs every 400ms)
   // rather than on every tick.
@@ -705,7 +722,7 @@ function goPrev(){
 function toggleShuffle(){
   shuffleOn = !shuffleOn;
   shuffleBtn.classList.toggle('toggled', shuffleOn);
-  document.getElementById('mpShuffle').classList.toggle('toggled', shuffleOn);
+  mpShuffle.classList.toggle('toggled', shuffleOn);
   if (shuffleOn){
     shuffleOrder = generateShuffleOrder();
     // Fresh history for the new shuffle sequence — mixing in whatever
@@ -722,9 +739,8 @@ function toggleRepeat(){
   const icon = repeatMode === 'one' ? ICONS.repeatOne : ICONS.repeat;
   repeatBtn.classList.toggle('toggled', repeatMode !== 'off');
   repeatBtn.innerHTML = icon;
-  const mpRepeatBtn = document.getElementById('mpRepeat');
-  mpRepeatBtn.classList.toggle('toggled', repeatMode !== 'off');
-  mpRepeatBtn.innerHTML = icon;
+  mpRepeat.classList.toggle('toggled', repeatMode !== 'off');
+  mpRepeat.innerHTML = icon;
   updateTransportButtons();
 }
 
@@ -735,9 +751,9 @@ function updateNowPlayingUI(track){
   document.getElementById('nowTitle').textContent = track.name;
   document.getElementById('nowArtist').textContent = artists;
   document.getElementById('spotifyLink').href = track.external_url || '#';
-  document.getElementById('mpArt').src = art;
-  document.getElementById('mpTitle').textContent = track.name;
-  document.getElementById('mpArtist').textContent = artists;
+  mpArt.src = art;
+  mpTitle.textContent = track.name;
+  mpArtist.textContent = artists;
 }
 
 async function playTrack(track, resumeAtSeconds){
@@ -869,12 +885,12 @@ prevBtn.innerHTML = ICONS.prev;
 nextBtn.innerHTML = ICONS.next;
 document.getElementById('playPause').innerHTML = ICONS.play;
 volumeIcon.innerHTML = ICONS.volHigh;
-document.getElementById('mpPrev').innerHTML = ICONS.prev;
-document.getElementById('mpNext').innerHTML = ICONS.next;
-document.getElementById('mpPlayPause').innerHTML = ICONS.play;
-document.getElementById('mpShuffle').innerHTML = ICONS.shuffle;
-document.getElementById('mpRepeat').innerHTML = ICONS.repeat;
-document.getElementById('mpVolumeIcon').innerHTML = ICONS.volHigh;
+mpPrev.innerHTML = ICONS.prev;
+mpNext.innerHTML = ICONS.next;
+mpPlayPause.innerHTML = ICONS.play;
+mpShuffle.innerHTML = ICONS.shuffle;
+mpRepeat.innerHTML = ICONS.repeat;
+mpVolumeIcon.innerHTML = ICONS.volHigh;
 
 initSwatches();
 document.getElementById('loginBtn').addEventListener('click', startSpotifyLogin);
@@ -900,6 +916,43 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
 
 let pipWindow = null;
 
+const MINI_PLAYER_CSS = `
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+    background:#0c0d0f; font-family: Arial, sans-serif; }
+  #miniPlayerRoot{ display:flex; align-items:center; gap:10px; padding:8px 12px;
+    width:100%; height:100%; position:relative; color:#F2F2F0; }
+  #mpArt{ width:38px; height:38px; border-radius:6px; object-fit:cover;
+    flex-shrink:0; background:#16181c; }
+  .mp-meta{ min-width:0; width:88px; flex-shrink:0; }
+  .mp-title{ font-weight:600; font-size:0.8rem; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; color:#F2F2F0; }
+  .mp-artist{ color:#8A8A93; font-size:0.7rem; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; }
+  .mp-controls{ display:flex; align-items:center; gap:6px; flex-shrink:0; }
+  .mp-controls button{ background:none; border:none; color:#F2F2F0;
+    cursor:pointer; padding:2px; opacity:0.85; display:flex;
+    align-items:center; justify-content:center; }
+  .mp-controls button svg{ display:block; }
+  .mp-controls button:hover{ opacity:1; color:%%ACCENT%%; }
+  .mp-controls button.toggled{ color:%%ACCENT%%; opacity:1; }
+  #mpPlayPause{ background:#F2F2F0; color:#0c0d0f; width:26px; height:26px;
+    border-radius:50%; opacity:1; }
+  .mp-volume{ display:flex; align-items:center; gap:6px; width:70px; flex-shrink:0; }
+  .mp-volume input[type="range"]{ -webkit-appearance:none; appearance:none;
+    width:100%; height:3px; background:#26282e; border-radius:4px; outline:none; }
+  .mp-volume input[type="range"]::-webkit-slider-thumb{ -webkit-appearance:none;
+    width:10px; height:10px; border-radius:50%; background:%%ACCENT%%; cursor:pointer; }
+  .mp-volume input[type="range"]::-moz-range-thumb{ width:10px; height:10px;
+    border-radius:50%; background:%%ACCENT%%; cursor:pointer; border:none; }
+  #mpVolumeIcon{ cursor:pointer; color:#8A8A93; display:flex; align-items:center;
+    flex-shrink:0; }
+  #mpVolumeIcon svg{ display:block; }
+  .mp-progress-track{ position:absolute; left:0; right:0; bottom:0; height:3px;
+    background:#26282e; cursor:pointer; }
+  .mp-progress-fill{ height:100%; width:0%; background:%%ACCENT%%; }
+`;
+
 async function toggleMiniPlayer(){
   // Document Picture-in-Picture is Chrome/Edge only today. Where it's
   // not available, fall back to the old in-page collapsed bar instead
@@ -921,26 +974,15 @@ async function toggleMiniPlayer(){
     height: 60,
   });
 
-  // The floating window starts as a blank document — copy over the
-  // page's styles so the moved-in controls aren't unstyled.
-  [...document.styleSheets].forEach((styleSheet) => {
-    try {
-      const cssText = [...styleSheet.cssRules].map(rule => rule.cssText).join('\n');
-      const style = document.createElement('style');
-      style.textContent = cssText;
-      pipWindow.document.head.appendChild(style);
-    } catch (_) {
-      // Cross-origin stylesheets (e.g. Google Fonts) can't be read
-      // this way — link them directly into the new window instead.
-      if (styleSheet.href){
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.href = styleSheet.href;
-        pipWindow.document.head.appendChild(link);
-      }
-    }
-  });
-  pipWindow.document.body.style.margin = '0';
+  // Self-contained styles built specifically for this compact view —
+  // deliberately NOT cloned from the main page's stylesheet, since
+  // reading cssRules across documents is unreliable (CORS-sensitive,
+  // and any one failure left the whole popout unstyled and oversized).
+  const accent = getComputedStyle(document.documentElement)
+    .getPropertyValue('--accent').trim() || '#1DB954';
+  const style = pipWindow.document.createElement('style');
+  style.textContent = MINI_PLAYER_CSS.replace(/%%ACCENT%%/g, accent);
+  pipWindow.document.head.appendChild(style);
 
   // Move the real node (not a clone) so every listener on it keeps
   // working untouched, and audio keeps playing from the hidden
@@ -983,10 +1025,10 @@ function togglePlayPause(){
 }
 
 document.getElementById('playPause').addEventListener('click', togglePlayPause);
-document.getElementById('mpPlayPause').addEventListener('click', togglePlayPause);
-document.getElementById('mpNext').addEventListener('click', goNext);
-document.getElementById('mpPrev').addEventListener('click', goPrev);
-document.getElementById('mpProgressTrack').addEventListener('click', (e) => {
+mpPlayPause.addEventListener('click', togglePlayPause);
+mpNext.addEventListener('click', goNext);
+mpPrev.addEventListener('click', goPrev);
+mpProgressTrack.addEventListener('click', (e) => {
   if (!ytPlayer || !currentDuration) return;
   const rect = e.currentTarget.getBoundingClientRect();
   const pct = (e.clientX - rect.left) / rect.width;
@@ -997,11 +1039,9 @@ nextBtn.addEventListener('click', goNext);
 prevBtn.addEventListener('click', goPrev);
 shuffleBtn.addEventListener('click', toggleShuffle);
 repeatBtn.addEventListener('click', toggleRepeat);
-document.getElementById('mpShuffle').addEventListener('click', toggleShuffle);
-document.getElementById('mpRepeat').addEventListener('click', toggleRepeat);
+mpShuffle.addEventListener('click', toggleShuffle);
+mpRepeat.addEventListener('click', toggleRepeat);
 
-const mpVolumeSlider = document.getElementById('mpVolumeSlider');
-const mpVolumeIcon = document.getElementById('mpVolumeIcon');
 let mutedVolume = null;
 
 function applyVolume(v, sourceEl){
