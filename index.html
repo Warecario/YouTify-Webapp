@@ -376,6 +376,41 @@ const SPOTIFY_SCOPES = "playlist-read-private playlist-read-collaborative";
 
 let spotifyAccessToken = null;
 let spotifyRefreshToken = null;
+let currentPlaylistContext = null; // { id, name } or null when playing from search
+let pendingRestoreTrack = null;
+
+/* ---------- Cookie helpers ----------
+   Cookies persist across visits on the real deployed site. This is
+   client-side-only storage — fine for your own accent preference and
+   your own Spotify tokens, since nothing here is shared with anyone
+   else visiting the page. */
+
+function setCookie(name, value, days){
+  const d = new Date();
+  d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+  document.cookie = `${name}=${encodeURIComponent(value)};expires=${d.toUTCString()};path=/;SameSite=Lax`;
+}
+function getCookie(name){
+  const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+function deleteCookie(name){
+  document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`;
+}
+
+function saveNowPlayingCookie(track){
+  setCookie('youtify_last_track', JSON.stringify({
+    name: track.name,
+    artists: track.artists,
+    images: track.album.images,
+    external_url: track.external_url,
+  }), 30);
+  if (currentPlaylistContext){
+    setCookie('youtify_last_playlist', JSON.stringify(currentPlaylistContext), 30);
+  } else {
+    deleteCookie('youtify_last_playlist');
+  }
+}
 
 const ACCENT_COLORS = [
   { name: "Spotify green", value: "#1DB954" },
@@ -405,18 +440,24 @@ function setStatus(msg){ statusEl.textContent = msg; }
 
 function initSwatches(){
   const wrap = document.getElementById('swatches');
+  const savedAccent = getCookie('youtify_accent');
   ACCENT_COLORS.forEach((c, i) => {
+    const isActive = savedAccent ? c.value === savedAccent : i === 0;
     const el = document.createElement('div');
-    el.className = 'swatch' + (i === 0 ? ' active' : '');
+    el.className = 'swatch' + (isActive ? ' active' : '');
     el.style.background = c.value;
     el.title = c.name;
     el.addEventListener('click', () => {
       document.documentElement.style.setProperty('--accent', c.value);
       document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
       el.classList.add('active');
+      setCookie('youtify_accent', c.value, 365);
     });
     wrap.appendChild(el);
   });
+  if (savedAccent){
+    document.documentElement.style.setProperty('--accent', savedAccent);
+  }
 }
 
 /* ---------- Spotify user login (PKCE) ---------- */
@@ -481,6 +522,7 @@ async function handleSpotifyRedirect(){
     const data = await res.json();
     spotifyAccessToken = data.access_token;
     spotifyRefreshToken = data.refresh_token;
+    setCookie('youtify_spotify_refresh', spotifyRefreshToken, 30);
     await afterLogin();
   } catch (err){
     setStatus(err.message);
@@ -502,7 +544,10 @@ async function refreshSpotifyToken(){
   if (!res.ok) return false;
   const data = await res.json();
   spotifyAccessToken = data.access_token;
-  if (data.refresh_token) spotifyRefreshToken = data.refresh_token;
+  if (data.refresh_token){
+    spotifyRefreshToken = data.refresh_token;
+    setCookie('youtify_spotify_refresh', spotifyRefreshToken, 30);
+  }
   return true;
 }
 
@@ -577,6 +622,7 @@ async function loadPlaylistTracks(playlistId, playlistName, rowEl){
       }));
     if (!tracks.length){ setStatus('This playlist has no tracks.'); return; }
     setStatus('');
+    currentPlaylistContext = { id: playlistId, name: playlistName };
     currentResults = tracks;
     currentIndex = -1;
     tracks.forEach((t, i) => renderResultRow(t, i));
@@ -688,6 +734,7 @@ async function runSearch(){
     const tracks = await searchSpotify(q);
     if (!tracks.length){ setStatus('No matches found.'); return; }
     setStatus('');
+    currentPlaylistContext = null;
     currentResults = tracks;
     currentIndex = -1;
     tracks.forEach((t, i) => renderResultRow(t, i));
@@ -748,6 +795,7 @@ async function playTrack(track){
   document.getElementById('nowTitle').textContent = track.name;
   document.getElementById('nowArtist').textContent = artists;
   document.getElementById('spotifyLink').href = track.external_url;
+  saveNowPlayingCookie(track);
 
   try {
     const videoId = await findYouTubeVideoId(track.name, artists);
@@ -759,17 +807,79 @@ async function playTrack(track){
   }
 }
 
+/* ---------- Restore on load ---------- */
+
+async function restoreSession(){
+  // Silent re-login from a saved refresh token, if we have one and
+  // didn't just complete a fresh login via redirect.
+  if (!spotifyAccessToken){
+    const savedRefresh = getCookie('youtify_spotify_refresh');
+    if (savedRefresh){
+      spotifyRefreshToken = savedRefresh;
+      const ok = await refreshSpotifyToken();
+      if (ok) await afterLogin();
+    }
+  }
+
+  const savedTrackRaw = getCookie('youtify_last_track');
+  if (!savedTrackRaw) return;
+
+  let savedTrack;
+  try { savedTrack = JSON.parse(savedTrackRaw); } catch (_) { return; }
+  const track = {
+    name: savedTrack.name,
+    artists: savedTrack.artists,
+    album: { images: savedTrack.images },
+    external_url: savedTrack.external_url,
+  };
+
+  const savedPlaylistRaw = getCookie('youtify_last_playlist');
+  if (savedPlaylistRaw && spotifyAccessToken){
+    try {
+      const pl = JSON.parse(savedPlaylistRaw);
+      await loadPlaylistTracks(pl.id, pl.name);
+      const idx = currentResults.findIndex(t =>
+        t.name === track.name && t.artists.join(',') === track.artists.join(','));
+      if (idx !== -1){
+        currentIndex = idx;
+        highlightActiveRow();
+        updateTransportButtons();
+      }
+    } catch (_) { /* fall through to single-track restore below */ }
+  } else {
+    currentResults = [track];
+    currentIndex = 0;
+  }
+
+  // Show the restored track in the player bar without autoplaying —
+  // browsers block unsolicited autoplay anyway, and it respects the
+  // person's own choice of when to resume listening.
+  pendingRestoreTrack = track;
+  playerBarEl.style.display = 'flex';
+  document.getElementById('nowArt').src = track.album.images[0]?.url || '';
+  document.getElementById('nowTitle').textContent = track.name;
+  document.getElementById('nowArtist').textContent = track.artists.join(', ');
+  document.getElementById('spotifyLink').href = track.external_url || '#';
+}
+
 /* ---------- Wiring ---------- */
 
 initSwatches();
 document.getElementById('loginBtn').addEventListener('click', startSpotifyLogin);
-handleSpotifyRedirect();
+handleSpotifyRedirect().then(restoreSession);
 
 document.getElementById('searchBtn').addEventListener('click', runSearch);
 queryEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') runSearch(); });
 
 document.getElementById('playPause').addEventListener('click', () => {
-  if (!ytPlayer) return;
+  if (!ytPlayer){
+    if (pendingRestoreTrack){
+      const t = pendingRestoreTrack;
+      pendingRestoreTrack = null;
+      playTrack(t);
+    }
+    return;
+  }
   const state = ytPlayer.getPlayerState();
   if (state === YT.PlayerState.PLAYING) ytPlayer.pauseVideo();
   else ytPlayer.playVideo();
