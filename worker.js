@@ -5,6 +5,7 @@
  * safe, key-free endpoints for the static frontend to call:
  *
  *   GET /api/spotify-search?q=...
+ *   GET /api/spotify-playlist-tracks?id=...
  *   GET /api/youtube-search?title=...&artist=...
  *
  * Secrets are read from Worker environment variables (never hardcoded
@@ -73,7 +74,7 @@ async function handleSpotifySearch(url, env) {
 
   const token = await getSpotifyToken(env);
   const res = await fetch(
-    `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=8`,
+    `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track,playlist&limit=20`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!res.ok) {
@@ -93,6 +94,47 @@ async function handleSpotifySearch(url, env) {
     },
     external_url: t.external_urls.spotify,
   }));
+
+  // Public playlists — filter out nulls (Spotify sometimes returns null
+  // entries for playlists that have gone private since being indexed).
+  const playlists = (data.playlists?.items || [])
+    .filter(Boolean)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      owner: p.owner?.display_name || "Unknown",
+      images: p.images,
+      external_url: p.external_urls?.spotify,
+      trackCount: p.tracks?.total ?? null,
+    }));
+
+  return json({ tracks, playlists });
+}
+
+async function handlePlaylistTracks(url, env) {
+  const id = url.searchParams.get("id");
+  if (!id) return json({ error: "Missing id param" }, 400);
+
+  const token = await getSpotifyToken(env);
+  const res = await fetch(
+    `https://api.spotify.com/v1/playlists/${encodeURIComponent(id)}/tracks?limit=100`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    const bodyText = await res.text();
+    return json({ error: "Playlist lookup failed", status: res.status, detail: bodyText }, 502);
+  }
+
+  const data = await res.json();
+  const tracks = (data.items || [])
+    .map((item) => item.track)
+    .filter(Boolean)
+    .map((t) => ({
+      name: t.name,
+      artists: t.artists.map((a) => a.name),
+      album: { images: t.album.images },
+      external_url: t.external_urls?.spotify,
+    }));
 
   return json({ tracks });
 }
@@ -127,6 +169,9 @@ export default {
     try {
       if (url.pathname === "/api/spotify-search") {
         return await handleSpotifySearch(url, env);
+      }
+      if (url.pathname === "/api/spotify-playlist-tracks") {
+        return await handlePlaylistTracks(url, env);
       }
       if (url.pathname === "/api/youtube-search") {
         return await handleYouTubeSearch(url, env);
