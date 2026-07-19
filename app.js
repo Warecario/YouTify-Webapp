@@ -368,6 +368,7 @@ async function loadLikedSongs(rowEl){
     currentIndex = -1;
     historyStack = [];
     forwardStack = [];
+    renderResultsHeader('Liked Songs', `${tracks.length} tracks`, null);
     tracks.forEach((t, i) => renderResultRow(t, i));
   } catch (err){
     setStatus(err.message);
@@ -415,6 +416,10 @@ async function loadPlaylistTracks(playlistId, playlistName, rowEl){
     currentPlaylistContext = { id: playlistId, name: playlistName, source: 'user' };
     currentResults = tracks;
     currentIndex = -1;
+    historyStack = [];
+    forwardStack = [];
+    const playlistMeta = cachedUserPlaylists.find(pl => pl.id === playlistId);
+    renderResultsHeader(playlistName, `${tracks.length} tracks`, playlistMeta?.images?.[0]?.url);
     tracks.forEach((t, i) => renderResultRow(t, i));
   } catch (err){
     setStatus(err.message);
@@ -537,6 +542,7 @@ async function runSearch(){
   const q = queryEl.value.trim();
   if (!q){ showHome(); return; }
   showSearchResults();
+  clearResultsHeader();
   resultsEl.innerHTML = '';
   setStatus('Searching Spotify…');
   try {
@@ -556,17 +562,55 @@ async function runSearch(){
 
 /* ---------- Home view ---------- */
 
+const searchWrapEl = document.querySelector('.search-wrap');
+const settingsViewEl = document.getElementById('settingsView');
+const resultsHeaderEl = document.getElementById('resultsHeader');
+
 function showHome(){
   queryEl.value = '';
   setStatus('');
+  searchWrapEl.style.display = 'flex';
   homeViewEl.style.display = 'block';
   resultsEl.style.display = 'none';
+  resultsHeaderEl.style.display = 'none';
+  settingsViewEl.style.display = 'none';
   renderHomeView();
 }
 
 function showSearchResults(){
+  searchWrapEl.style.display = 'flex';
   homeViewEl.style.display = 'none';
   resultsEl.style.display = 'block';
+  settingsViewEl.style.display = 'none';
+}
+
+function showSettings(){
+  setStatus('');
+  searchWrapEl.style.display = 'none';
+  homeViewEl.style.display = 'none';
+  resultsEl.style.display = 'none';
+  resultsHeaderEl.style.display = 'none';
+  settingsViewEl.style.display = 'block';
+}
+
+// Shows what playlist (or Liked Songs) you're currently browsing, so
+// it's never ambiguous which list you're looking at.
+function renderResultsHeader(title, subtitle, artUrl){
+  resultsHeaderEl.innerHTML = artUrl
+    ? `<img class="results-header-art" src="${artUrl}" alt="">`
+    : '';
+  const textBlock = document.createElement('div');
+  textBlock.innerHTML = `
+    <h2 class="results-header-title">${title}</h2>
+    <div class="results-header-sub">${subtitle}</div>
+  `;
+  resultsHeaderEl.appendChild(textBlock);
+  resultsHeaderEl.style.display = 'flex';
+}
+
+function clearResultsHeader(){
+  resultsHeaderEl.style.display = 'none';
+  resultsHeaderEl.innerHTML = '';
 }
 
 function getGreeting(){
@@ -719,11 +763,75 @@ function nextShuffleIndex(index){
   return shuffleOrder[pos];
 }
 
+function queueRowHtml(track, isCurrent){
+  const art = track.album.images[track.album.images.length - 1]?.url || '';
+  return `
+    <img src="${art}" alt="">
+    <div class="queue-row-meta" style="min-width:0;">
+      <div class="queue-row-title">${track.name}</div>
+      <div class="queue-row-artist">${track.artists.join(', ')}</div>
+    </div>
+  `;
+}
+
+function renderQueuePanel(){
+  const nowEl = document.getElementById('queueNowPlaying');
+  const upNextEl = document.getElementById('queueUpNext');
+  nowEl.innerHTML = '';
+  upNextEl.innerHTML = '';
+
+  if (currentIndex === -1 || !currentResults.length){
+    nowEl.innerHTML = '<p class="queue-empty-hint">Nothing playing yet.</p>';
+    return;
+  }
+
+  const nowRow = document.createElement('div');
+  nowRow.className = 'queue-row current';
+  nowRow.innerHTML = queueRowHtml(currentResults[currentIndex], true);
+  nowEl.appendChild(nowRow);
+
+  // Compute upcoming order — shuffle-aware, capped at 25 for a sane list.
+  const upcoming = [];
+  if (shuffleOn){
+    if (!shuffleOrder.length || shuffleOrder.length !== currentResults.length){
+      shuffleOrder = generateShuffleOrder();
+    }
+    let pos = shuffleOrder.indexOf(currentIndex);
+    for (let i = 0; i < currentResults.length - 1 && upcoming.length < 25; i++){
+      pos = (pos + 1) % shuffleOrder.length;
+      upcoming.push(shuffleOrder[pos]);
+    }
+  } else {
+    for (let i = currentIndex + 1; i < currentResults.length && upcoming.length < 25; i++){
+      upcoming.push(i);
+    }
+    if (repeatMode === 'all'){
+      for (let i = 0; i < currentIndex && upcoming.length < 25; i++){
+        upcoming.push(i);
+      }
+    }
+  }
+
+  if (!upcoming.length){
+    upNextEl.innerHTML = '<p class="queue-empty-hint">End of queue.</p>';
+    return;
+  }
+
+  upcoming.forEach(idx => {
+    const row = document.createElement('div');
+    row.className = 'queue-row';
+    row.innerHTML = queueRowHtml(currentResults[idx], false);
+    row.addEventListener('click', () => playFromRow(idx));
+    upNextEl.appendChild(row);
+  });
+}
+
 async function playAt(index){
   if (index < 0 || index >= currentResults.length) return;
   currentIndex = index;
   highlightActiveRow();
   updateTransportButtons();
+  renderQueuePanel();
   await playTrack(currentResults[index]);
 }
 
@@ -790,6 +898,7 @@ function toggleShuffle(){
     forwardStack = [];
   }
   updateTransportButtons();
+  renderQueuePanel();
 }
 
 function toggleRepeat(){
@@ -956,10 +1065,16 @@ document.getElementById('brandHome').addEventListener('click', showHome);
 showHome();
 handleSpotifyRedirect().then(restoreSession);
 
-const settingsModal = document.getElementById('settingsModal');
-document.getElementById('settingsBtn').addEventListener('click', () => settingsModal.classList.add('open'));
-document.getElementById('closeSettings').addEventListener('click', () => settingsModal.classList.remove('open'));
-settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) settingsModal.classList.remove('open'); });
+document.getElementById('settingsBtn').addEventListener('click', showSettings);
+
+const queuePanelEl = document.getElementById('queuePanel');
+document.getElementById('queueToggleBtn').addEventListener('click', () => {
+  queuePanelEl.classList.toggle('open');
+  if (queuePanelEl.classList.contains('open')) renderQueuePanel();
+});
+document.getElementById('closeQueue').addEventListener('click', () => {
+  queuePanelEl.classList.remove('open');
+});
 
 document.getElementById('logoutBtn').addEventListener('click', () => {
   spotifyAccessToken = null;
@@ -971,7 +1086,7 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
   document.getElementById('userLabel').style.display = 'none';
   document.getElementById('playlistsLabel').style.display = 'none';
   document.getElementById('playlists').innerHTML = '';
-  settingsModal.classList.remove('open');
+  cachedUserPlaylists = [];
 });
 
 let pipWindow = null;
