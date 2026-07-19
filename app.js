@@ -1059,6 +1059,15 @@ mpShuffle.innerHTML = ICONS.shuffle;
 mpRepeat.innerHTML = ICONS.repeat;
 mpVolumeIcon.innerHTML = ICONS.volHigh;
 
+const savedVolume = parseInt(getCookie('youtify_volume'), 10);
+if (Number.isFinite(savedVolume)){
+  volumeSlider.value = savedVolume;
+  mpVolumeSlider.value = savedVolume;
+  const icon = savedVolume === 0 ? ICONS.volMute : savedVolume < 50 ? ICONS.volMid : ICONS.volHigh;
+  volumeIcon.innerHTML = icon;
+  mpVolumeIcon.innerHTML = icon;
+}
+
 initSwatches();
 document.getElementById('loginBtn').addEventListener('click', startSpotifyLogin);
 document.getElementById('brandHome').addEventListener('click', showHome);
@@ -1176,7 +1185,7 @@ async function toggleMiniPlayer(){
 document.getElementById('miniToggleBtn').addEventListener('click', toggleMiniPlayer);
 
 document.getElementById('clearDataBtn').addEventListener('click', () => {
-  ['youtify_accent', 'youtify_spotify_refresh', 'youtify_last_track', 'youtify_last_playlist', 'youtify_last_position']
+  ['youtify_accent', 'youtify_spotify_refresh', 'youtify_last_track', 'youtify_last_playlist', 'youtify_last_position', 'youtify_volume']
     .forEach(deleteCookie);
   window.location.reload();
 });
@@ -1229,6 +1238,7 @@ function applyVolume(v, sourceEl){
   if (sourceEl !== volumeSlider) volumeSlider.value = v;
   if (sourceEl !== mpVolumeSlider) mpVolumeSlider.value = v;
   mutedVolume = null;
+  setCookie('youtify_volume', v, 365);
 }
 
 volumeSlider.addEventListener('input', () => applyVolume(Number(volumeSlider.value), volumeSlider));
