@@ -465,7 +465,7 @@ async function ensurePlayer(videoId){
     }
     ytPlayer = new YT.Player('ytPlayer', {
       height: '1', width: '1', videoId: videoId,
-      playerVars: { autoplay: 1, controls: 0 },
+      playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, iv_load_policy: 3, fs: 0, disablekb: 1 },
       events: {
         onReady: () => {
           ytPlayer.setVolume(Number(volumeSlider.value));
@@ -567,23 +567,39 @@ const settingsViewEl = document.getElementById('settingsView');
 const resultsHeaderEl = document.getElementById('resultsHeader');
 const videoViewEl = document.getElementById('videoView');
 const videoSlotEl = document.getElementById('videoSlot');
+const ytHiddenEl = document.getElementById('yt-hidden');
 
-// The YouTube iframe lives in the hidden #yt-hidden stash by default.
-// Video mode moves the real iframe element into the visible slot; this
-// puts it back whenever you navigate to any other view.
-function returnVideoToStash(){
-  if (!ytPlayer || typeof ytPlayer.getIframe !== 'function') return;
-  const iframe = ytPlayer.getIframe();
-  const stash = document.getElementById('yt-hidden');
-  if (iframe && stash && iframe.parentElement !== stash){
-    stash.appendChild(iframe);
-  }
+// IMPORTANT: the iframe must never be moved to a different DOM parent —
+// browsers reload an <iframe> whenever it's re-parented, which would
+// sever it from the YT.Player instance tracking it (breaking progress,
+// button state, and track-change syncing, and resetting it back to
+// YouTube's default full chrome). Instead, video mode repositions the
+// iframe's permanent container in place, directly on top of the visible
+// placeholder slot, using fixed positioning — the iframe itself never
+// moves in the DOM tree.
+function positionVideoOverlay(){
+  const rect = videoSlotEl.getBoundingClientRect();
+  ytHiddenEl.style.top = `${rect.top}px`;
+  ytHiddenEl.style.left = `${rect.left}px`;
+  ytHiddenEl.style.width = `${rect.width}px`;
+  ytHiddenEl.style.height = `${rect.height}px`;
+}
+
+function hideVideoOverlay(){
+  ytHiddenEl.classList.remove('video-active');
+  ytHiddenEl.style.top = '0';
+  ytHiddenEl.style.left = '0';
+  ytHiddenEl.style.width = '1px';
+  ytHiddenEl.style.height = '1px';
+  window.removeEventListener('resize', positionVideoOverlay);
+  const mainScroll = document.querySelector('.main-scroll');
+  if (mainScroll) mainScroll.removeEventListener('scroll', positionVideoOverlay);
 }
 
 function showHome(){
   queryEl.value = '';
   setStatus('');
-  returnVideoToStash();
+  hideVideoOverlay();
   searchWrapEl.style.display = 'flex';
   homeViewEl.style.display = 'block';
   resultsEl.style.display = 'none';
@@ -594,7 +610,7 @@ function showHome(){
 }
 
 function showSearchResults(){
-  returnVideoToStash();
+  hideVideoOverlay();
   searchWrapEl.style.display = 'flex';
   homeViewEl.style.display = 'none';
   resultsEl.style.display = 'block';
@@ -604,7 +620,7 @@ function showSearchResults(){
 
 function showSettings(){
   setStatus('');
-  returnVideoToStash();
+  hideVideoOverlay();
   searchWrapEl.style.display = 'none';
   homeViewEl.style.display = 'none';
   resultsEl.style.display = 'none';
@@ -613,10 +629,11 @@ function showSettings(){
   videoViewEl.style.display = 'none';
 }
 
-// Moves the real, already-playing YouTube iframe into a visible slot —
-// same audio, same playback position, just no longer hidden. This is
-// just showing the video half of the same official YouTube embed
-// that's already providing the audio.
+// Positions the already-playing YouTube iframe directly over a visible
+// placeholder slot — same audio, same playback position, same tracked
+// player instance, just no longer visually tucked away. This is simply
+// showing the video half of the same official YouTube embed that's
+// already providing the audio.
 function showVideo(){
   setStatus('');
   searchWrapEl.style.display = 'none';
@@ -631,7 +648,7 @@ function showVideo(){
   const hasTrack = titleEl.textContent.trim().length > 0;
   const nowPlayingEl = document.getElementById('videoNowPlaying');
 
-  if (!ytPlayer || typeof ytPlayer.getIframe !== 'function' || !hasTrack){
+  if (!ytPlayer || !hasTrack){
     nowPlayingEl.textContent = '';
     videoSlotEl.innerHTML = '<p class="video-empty-hint">Nothing playing yet — play a song first.</p>';
     return;
@@ -639,8 +656,11 @@ function showVideo(){
 
   nowPlayingEl.textContent = `${titleEl.textContent} — ${artistEl.textContent}`;
   videoSlotEl.innerHTML = '';
-  const iframe = ytPlayer.getIframe();
-  videoSlotEl.appendChild(iframe);
+  ytHiddenEl.classList.add('video-active');
+  positionVideoOverlay();
+  window.addEventListener('resize', positionVideoOverlay);
+  const mainScroll = document.querySelector('.main-scroll');
+  if (mainScroll) mainScroll.addEventListener('scroll', positionVideoOverlay);
 }
 
 // Shows what playlist (or Liked Songs) you're currently browsing, so

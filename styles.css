@@ -265,11 +265,7 @@
     overflow:hidden;
     margin:10px auto 14px;
     display:flex; align-items:center; justify-content:center;
-  }
-  .video-slot iframe{
-    width:100% !important;
-    height:100% !important;
-    border:none;
+    position:relative;
   }
   .video-empty-hint{
     color:var(--muted); font-size:0.85rem;
@@ -596,4 +592,13 @@
   .source-block a{ color:var(--accent); text-decoration:none; }
   .source-block a:hover{ text-decoration:underline; }
 
-  #yt-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; opacity:0; pointer-events:none; }
+  #yt-hidden{
+    position:fixed; width:1px; height:1px; overflow:hidden;
+    opacity:0; pointer-events:none; z-index:-1;
+    top:0; left:0;
+  }
+  #yt-hidden.video-active{
+    opacity:1; pointer-events:auto; z-index:95;
+    border-radius:12px; overflow:hidden;
+  }
+  #yt-hidden iframe{ width:100% !important; height:100% !important; border:none; }
