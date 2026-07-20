@@ -966,6 +966,8 @@ async function playAt(index){
   highlightActiveRow();
   updateTransportButtons();
   renderQueuePanel();
+  const trackSelectPanel = document.getElementById('trackSelectPanel');
+  if (trackSelectPanel.classList.contains('open')) showTrackSelect();
   await playTrack(currentResults[index]);
 }
 

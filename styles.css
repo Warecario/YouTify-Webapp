@@ -157,7 +157,7 @@
     padding:20px;
     overflow-y:auto;
     transition:right 0.2s ease;
-    z-index:90;
+    z-index:100;
   }
   .queue-panel.open{ right:0; }
   .queue-panel-header{
