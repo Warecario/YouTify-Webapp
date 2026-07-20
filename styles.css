@@ -598,7 +598,7 @@
     top:0; left:0;
   }
   #yt-hidden.video-active{
-    opacity:1; pointer-events:auto; z-index:95;
+    opacity:1; pointer-events:none; z-index:95;
     border-radius:12px; overflow:hidden;
   }
   #yt-hidden iframe{ width:100% !important; height:100% !important; border:none; }

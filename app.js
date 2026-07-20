@@ -465,7 +465,7 @@ async function ensurePlayer(videoId){
     }
     ytPlayer = new YT.Player('ytPlayer', {
       height: '1', width: '1', videoId: videoId,
-      playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, iv_load_policy: 3, fs: 0, disablekb: 1 },
+      playerVars: { autoplay: 1, controls: 0, rel: 0, modestbranding: 1, iv_load_policy: 3, fs: 0, disablekb: 1, cc_load_policy: 1 },
       events: {
         onReady: () => {
           ytPlayer.setVolume(Number(volumeSlider.value));
@@ -596,7 +596,10 @@ function hideVideoOverlay(){
   if (mainScroll) mainScroll.removeEventListener('scroll', positionVideoOverlay);
 }
 
+let currentViewName = 'home';
+
 function showHome(){
+  currentViewName = 'home';
   queryEl.value = '';
   setStatus('');
   hideVideoOverlay();
@@ -610,6 +613,7 @@ function showHome(){
 }
 
 function showSearchResults(){
+  currentViewName = 'results';
   hideVideoOverlay();
   searchWrapEl.style.display = 'flex';
   homeViewEl.style.display = 'none';
@@ -619,6 +623,7 @@ function showSearchResults(){
 }
 
 function showSettings(){
+  currentViewName = 'settings';
   setStatus('');
   hideVideoOverlay();
   searchWrapEl.style.display = 'none';
@@ -635,6 +640,7 @@ function showSettings(){
 // showing the video half of the same official YouTube embed that's
 // already providing the audio.
 function showVideo(){
+  currentViewName = 'video';
   setStatus('');
   searchWrapEl.style.display = 'none';
   homeViewEl.style.display = 'none';
@@ -661,6 +667,17 @@ function showVideo(){
   window.addEventListener('resize', positionVideoOverlay);
   const mainScroll = document.querySelector('.main-scroll');
   if (mainScroll) mainScroll.addEventListener('scroll', positionVideoOverlay);
+}
+
+// Toggling the button while already in video mode needs to actually
+// leave it — otherwise there's no way back to Home/Search/Settings
+// from the button itself.
+function toggleVideo(){
+  if (currentViewName === 'video'){
+    showHome();
+  } else {
+    showVideo();
+  }
 }
 
 // Shows what playlist (or Liked Songs) you're currently browsing, so
@@ -992,6 +1009,9 @@ function updateNowPlayingUI(track){
   mpArt.src = art;
   mpTitle.textContent = track.name;
   mpArtist.textContent = artists;
+  if (currentViewName === 'video'){
+    document.getElementById('videoNowPlaying').textContent = `${track.name} — ${artists}`;
+  }
 }
 
 async function playTrack(track, resumeAtSeconds){
@@ -1145,7 +1165,7 @@ showHome();
 handleSpotifyRedirect().then(restoreSession);
 
 document.getElementById('settingsBtn').addEventListener('click', showSettings);
-document.getElementById('videoToggleBtn').addEventListener('click', showVideo);
+document.getElementById('videoToggleBtn').addEventListener('click', toggleVideo);
 
 const queuePanelEl = document.getElementById('queuePanel');
 document.getElementById('queueToggleBtn').addEventListener('click', () => {
