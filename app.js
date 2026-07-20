@@ -86,6 +86,42 @@ function saveNowPlayingCookie(track){
   }
 }
 
+/* ---------- Track Select overrides ----------
+   Lets a wrong YouTube match (or a specific remix/lyric video) be
+   manually corrected, remembered per-track via a cookie so it sticks
+   every time that song plays again. */
+
+function trackKey(title, artist){
+  return `${artist}`.toLowerCase().trim() + '::' + `${title}`.toLowerCase().trim();
+}
+
+function getVideoOverrides(){
+  const raw = getCookie('youtify_video_overrides');
+  if (!raw) return {};
+  try { return JSON.parse(raw) || {}; } catch (_) { return {}; }
+}
+
+function getVideoOverride(title, artist){
+  const map = getVideoOverrides();
+  return map[trackKey(title, artist)] || null;
+}
+
+function setVideoOverride(title, artist, videoId){
+  const map = getVideoOverrides();
+  const key = trackKey(title, artist);
+  delete map[key]; // re-insert at the end so eviction stays LRU-ish
+  map[key] = videoId;
+
+  // Cookies are capped around 4KB — trim oldest entries if we're
+  // getting close, rather than letting the write silently fail.
+  let keys = Object.keys(map);
+  while (JSON.stringify(map).length > 3500 && keys.length > 1){
+    delete map[keys.shift()];
+    keys = Object.keys(map);
+  }
+  setCookie('youtify_video_overrides', JSON.stringify(map), 365);
+}
+
 const ACCENT_COLORS = [
   { name: "Spotify green", value: "#1DB954" },
   { name: "Electric blue",  value: "#3D8BFF" },
@@ -436,11 +472,22 @@ async function searchSpotify(q){
 }
 
 async function findYouTubeVideoId(title, artist){
+  const override = getVideoOverride(title, artist);
+  if (override) return override;
+
   const url = `${PROXY_BASE_URL}/api/youtube-search?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("YouTube lookup failed — is the proxy deployed and reachable?");
   const data = await res.json();
   return data.videoId;
+}
+
+async function fetchYouTubeAlternatives(title, artist){
+  const url = `${PROXY_BASE_URL}/api/youtube-search-multi?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("YouTube lookup failed — is the proxy deployed and reachable?");
+  const data = await res.json();
+  return data.results || [];
 }
 
 /* ---------- YouTube IFrame Player (hidden, audio-only use) ---------- */
@@ -1039,6 +1086,61 @@ async function playTrack(track, resumeAtSeconds){
   }
 }
 
+/* ---------- Track Select ---------- */
+
+function getCurrentTrackObj(){
+  if (currentIndex === -1 || !currentResults[currentIndex]) return null;
+  return currentResults[currentIndex];
+}
+
+async function showTrackSelect(){
+  document.getElementById('trackSelectPanel').classList.add('open');
+  const listEl = document.getElementById('trackSelectList');
+  const track = getCurrentTrackObj();
+
+  if (!track){
+    listEl.innerHTML = '<p class="queue-empty-hint">Nothing playing yet.</p>';
+    return;
+  }
+
+  listEl.innerHTML = '<p class="queue-empty-hint">Searching YouTube…</p>';
+  const artists = track.artists.join(', ');
+
+  try {
+    const results = await fetchYouTubeAlternatives(track.name, artists);
+    if (!results.length){
+      listEl.innerHTML = '<p class="queue-empty-hint">No results found.</p>';
+      return;
+    }
+    const currentOverride = getVideoOverride(track.name, artists);
+    listEl.innerHTML = '';
+    results.forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'track-select-row' + (r.videoId === currentOverride ? ' current' : '');
+      row.innerHTML = `
+        <img src="${r.thumbnail}" alt="">
+        <div style="min-width:0;">
+          <div class="track-select-title">${r.title}</div>
+          <div class="track-select-channel">${r.channelTitle}</div>
+        </div>
+      `;
+      row.addEventListener('click', () => selectTrackVideo(track, r.videoId));
+      listEl.appendChild(row);
+    });
+  } catch (err){
+    listEl.innerHTML = `<p class="queue-empty-hint">${err.message}</p>`;
+  }
+}
+
+async function selectTrackVideo(track, videoId){
+  const artists = track.artists.join(', ');
+  setVideoOverride(track.name, artists, videoId);
+  document.getElementById('trackSelectPanel').classList.remove('open');
+  setStatus('Switching video…');
+  await ensurePlayer(videoId);
+  setStatus('');
+}
+
 function recordRecentlyPlayed(track){
   recentlyPlayed = recentlyPlayed.filter(t =>
     !(t.name === track.name && t.artists.join(',') === track.artists.join(',')));
@@ -1174,6 +1276,18 @@ document.getElementById('queueToggleBtn').addEventListener('click', () => {
 });
 document.getElementById('closeQueue').addEventListener('click', () => {
   queuePanelEl.classList.remove('open');
+});
+
+const trackSelectPanelEl = document.getElementById('trackSelectPanel');
+document.getElementById('trackSelectToggleBtn').addEventListener('click', () => {
+  if (trackSelectPanelEl.classList.contains('open')){
+    trackSelectPanelEl.classList.remove('open');
+  } else {
+    showTrackSelect();
+  }
+});
+document.getElementById('closeTrackSelect').addEventListener('click', () => {
+  trackSelectPanelEl.classList.remove('open');
 });
 
 document.getElementById('logoutBtn').addEventListener('click', () => {

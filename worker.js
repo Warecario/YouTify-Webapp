@@ -6,6 +6,7 @@
  *
  *   GET /api/spotify-search?q=...
  *   GET /api/youtube-search?title=...&artist=...
+ *   GET /api/youtube-search-multi?title=...&artist=...
  *
  * Secrets are read from Worker environment variables (never hardcoded
  * here, and never shipped to the browser). Set them with:
@@ -118,6 +119,33 @@ async function handleYouTubeSearch(url, env) {
   return json({ videoId });
 }
 
+// Powers "Track Select" — returns several candidate videos instead of
+// just the top pick, so a wrong match (or a specific remix/lyric video)
+// can be manually chosen.
+async function handleYouTubeSearchMulti(url, env) {
+  const title = url.searchParams.get("title");
+  const artist = url.searchParams.get("artist");
+  if (!title || !artist) return json({ error: "Missing title/artist" }, 400);
+
+  const q = encodeURIComponent(`${artist} - ${title}`);
+  const res = await fetch(
+    `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=8&type=video&q=${q}&key=${env.YOUTUBE_API_KEY}`
+  );
+  if (!res.ok) {
+    const bodyText = await res.text();
+    return json({ error: "YouTube search failed", status: res.status, detail: bodyText }, 502);
+  }
+
+  const data = await res.json();
+  const results = (data.items || []).map((item) => ({
+    videoId: item.id.videoId,
+    title: item.snippet.title,
+    channelTitle: item.snippet.channelTitle,
+    thumbnail: item.snippet.thumbnails?.default?.url || item.snippet.thumbnails?.medium?.url || "",
+  }));
+  return json({ results });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -132,6 +160,9 @@ export default {
       }
       if (url.pathname === "/api/youtube-search") {
         return await handleYouTubeSearch(url, env);
+      }
+      if (url.pathname === "/api/youtube-search-multi") {
+        return await handleYouTubeSearchMulti(url, env);
       }
       return json({ error: "Not found" }, 404);
     } catch (err) {
