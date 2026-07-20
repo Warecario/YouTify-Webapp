@@ -565,32 +565,82 @@ async function runSearch(){
 const searchWrapEl = document.querySelector('.search-wrap');
 const settingsViewEl = document.getElementById('settingsView');
 const resultsHeaderEl = document.getElementById('resultsHeader');
+const videoViewEl = document.getElementById('videoView');
+const videoSlotEl = document.getElementById('videoSlot');
+
+// The YouTube iframe lives in the hidden #yt-hidden stash by default.
+// Video mode moves the real iframe element into the visible slot; this
+// puts it back whenever you navigate to any other view.
+function returnVideoToStash(){
+  if (!ytPlayer || typeof ytPlayer.getIframe !== 'function') return;
+  const iframe = ytPlayer.getIframe();
+  const stash = document.getElementById('yt-hidden');
+  if (iframe && stash && iframe.parentElement !== stash){
+    stash.appendChild(iframe);
+  }
+}
 
 function showHome(){
   queryEl.value = '';
   setStatus('');
+  returnVideoToStash();
   searchWrapEl.style.display = 'flex';
   homeViewEl.style.display = 'block';
   resultsEl.style.display = 'none';
   resultsHeaderEl.style.display = 'none';
   settingsViewEl.style.display = 'none';
+  videoViewEl.style.display = 'none';
   renderHomeView();
 }
 
 function showSearchResults(){
+  returnVideoToStash();
   searchWrapEl.style.display = 'flex';
   homeViewEl.style.display = 'none';
   resultsEl.style.display = 'block';
   settingsViewEl.style.display = 'none';
+  videoViewEl.style.display = 'none';
 }
 
 function showSettings(){
   setStatus('');
+  returnVideoToStash();
   searchWrapEl.style.display = 'none';
   homeViewEl.style.display = 'none';
   resultsEl.style.display = 'none';
   resultsHeaderEl.style.display = 'none';
   settingsViewEl.style.display = 'block';
+  videoViewEl.style.display = 'none';
+}
+
+// Moves the real, already-playing YouTube iframe into a visible slot —
+// same audio, same playback position, just no longer hidden. This is
+// just showing the video half of the same official YouTube embed
+// that's already providing the audio.
+function showVideo(){
+  setStatus('');
+  searchWrapEl.style.display = 'none';
+  homeViewEl.style.display = 'none';
+  resultsEl.style.display = 'none';
+  resultsHeaderEl.style.display = 'none';
+  settingsViewEl.style.display = 'none';
+  videoViewEl.style.display = 'block';
+
+  const titleEl = document.getElementById('nowTitle');
+  const artistEl = document.getElementById('nowArtist');
+  const hasTrack = titleEl.textContent.trim().length > 0;
+  const nowPlayingEl = document.getElementById('videoNowPlaying');
+
+  if (!ytPlayer || typeof ytPlayer.getIframe !== 'function' || !hasTrack){
+    nowPlayingEl.textContent = '';
+    videoSlotEl.innerHTML = '<p class="video-empty-hint">Nothing playing yet — play a song first.</p>';
+    return;
+  }
+
+  nowPlayingEl.textContent = `${titleEl.textContent} — ${artistEl.textContent}`;
+  videoSlotEl.innerHTML = '';
+  const iframe = ytPlayer.getIframe();
+  videoSlotEl.appendChild(iframe);
 }
 
 // Shows what playlist (or Liked Songs) you're currently browsing, so
@@ -1075,6 +1125,7 @@ showHome();
 handleSpotifyRedirect().then(restoreSession);
 
 document.getElementById('settingsBtn').addEventListener('click', showSettings);
+document.getElementById('videoToggleBtn').addEventListener('click', showVideo);
 
 const queuePanelEl = document.getElementById('queuePanel');
 document.getElementById('queueToggleBtn').addEventListener('click', () => {

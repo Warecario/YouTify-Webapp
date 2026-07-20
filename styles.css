@@ -256,6 +256,29 @@
     color:var(--muted); font-size:0.85rem; margin-top:4px;
   }
 
+  /* ---------- Video mode ---------- */
+  .video-slot{
+    width:100%; max-width:760px;
+    aspect-ratio:16/9;
+    background:#000;
+    border-radius:12px;
+    overflow:hidden;
+    margin:10px auto 14px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .video-slot iframe{
+    width:100% !important;
+    height:100% !important;
+    border:none;
+  }
+  .video-empty-hint{
+    color:var(--muted); font-size:0.85rem;
+  }
+  .video-now-playing{
+    text-align:center; color:var(--muted); font-size:0.85rem;
+    max-width:760px; margin:0 auto;
+  }
+
   /* ---------- Auth + playlists ---------- */
   .auth-block{ overflow-y:auto; flex:1; min-height:0; }
   .login-btn{
