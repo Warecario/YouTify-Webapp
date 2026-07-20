@@ -5,3 +5,12 @@ compatibility_date = "2024-11-01"
 # Secrets (SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, YOUTUBE_API_KEY)
 # are NOT set here — set them via `wrangler secret put <NAME>` so they
 # never end up in this file or in git.
+
+# Shared, cross-user cache of "song -> matched YouTube video" so the
+# same track only ever needs one real YouTube search, no matter how
+# many different people play it. Create the namespace once with:
+#   wrangler kv:namespace create YOUTIFY_KV
+# then paste the id it prints below.
+[[kv_namespaces]]
+binding = "YOUTIFY_KV"
+id = "46f8eca570d34aff9876ff4b9e3bd8c"

@@ -100,10 +100,25 @@ async function handleSpotifySearch(url, env) {
   return json({ tracks });
 }
 
+// Normalizes a track into a stable cache key — same approach the
+// client uses for its own personal override cookie.
+function ytCacheKey(title, artist) {
+  return `ytmatch:${artist}`.toLowerCase().trim() + "::" + `${title}`.toLowerCase().trim();
+}
+
 async function handleYouTubeSearch(url, env) {
   const title = url.searchParams.get("title");
   const artist = url.searchParams.get("artist");
   if (!title || !artist) return json({ error: "Missing title/artist" }, 400);
+
+  const cacheKey = ytCacheKey(title, artist);
+
+  // Shared cache: if ANY user has already searched this exact song,
+  // reuse that match instead of spending YouTube API quota again.
+  if (env.YOUTIFY_KV) {
+    const cached = await env.YOUTIFY_KV.get(cacheKey);
+    if (cached) return json({ videoId: cached, cached: true });
+  }
 
   const q = encodeURIComponent(`${artist} - ${title} audio`);
   const res = await fetch(
@@ -116,6 +131,14 @@ async function handleYouTubeSearch(url, env) {
 
   const data = await res.json();
   const videoId = data.items?.[0]?.id?.videoId ?? null;
+
+  if (videoId && env.YOUTIFY_KV) {
+    // No expiration — these mappings are stable. If a video ever gets
+    // taken down, the found-nothing/broken-playback path already
+    // surfaces that, and Track Select lets it be corrected per-user.
+    await env.YOUTIFY_KV.put(cacheKey, videoId);
+  }
+
   return json({ videoId });
 }
 
