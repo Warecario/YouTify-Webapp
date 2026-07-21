@@ -1311,35 +1311,35 @@ const MINI_PLAYER_CSS = `
   * { box-sizing: border-box; }
   html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden;
     background:#0c0d0f; font-family: Arial, sans-serif; }
-  #miniPlayerRoot{ display:flex; align-items:center; gap:8px; padding:3px 8px;
+  #miniPlayerRoot{ display:flex; align-items:center; gap:10px; padding:5px 10px;
     width:100%; height:100%; position:relative; color:#F2F2F0; }
-  #mpArt{ width:26px; height:26px; border-radius:5px; object-fit:cover;
+  #mpArt{ width:36px; height:36px; border-radius:6px; object-fit:cover;
     flex-shrink:0; background:#16181c; }
-  .mp-meta{ min-width:0; width:78px; flex-shrink:0; }
-  .mp-title{ font-weight:600; font-size:0.66rem; white-space:nowrap;
-    overflow:hidden; text-overflow:ellipsis; color:#F2F2F0; line-height:1.15; }
-  .mp-artist{ color:#8A8A93; font-size:0.58rem; white-space:nowrap;
-    overflow:hidden; text-overflow:ellipsis; line-height:1.15; }
-  .mp-controls{ display:flex; align-items:center; gap:4px; flex-shrink:0; }
+  .mp-meta{ min-width:0; width:100px; flex-shrink:0; }
+  .mp-title{ font-weight:600; font-size:0.72rem; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; color:#F2F2F0; line-height:1.2; }
+  .mp-artist{ color:#8A8A93; font-size:0.64rem; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; line-height:1.2; }
+  .mp-controls{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
   .mp-controls button{ background:none; border:none; color:#F2F2F0;
-    cursor:pointer; padding:1px; opacity:0.85; display:flex;
+    cursor:pointer; padding:2px; opacity:0.85; display:flex;
     align-items:center; justify-content:center; }
-  .mp-controls button svg{ display:block; width:13px; height:13px; }
+  .mp-controls button svg{ display:block; width:18px; height:18px; }
   .mp-controls button:hover{ opacity:1; color:%%ACCENT%%; }
   .mp-controls button.toggled{ color:%%ACCENT%%; opacity:1; }
-  #mpPlayPause{ background:#F2F2F0; color:#0c0d0f; width:20px; height:20px;
+  #mpPlayPause{ background:#F2F2F0; color:#0c0d0f; width:28px; height:28px;
     border-radius:50%; opacity:1; }
-  #mpPlayPause svg{ width:10px; height:10px; }
-  .mp-volume{ display:flex; align-items:center; gap:4px; width:52px; flex-shrink:0; }
+  #mpPlayPause svg{ width:14px; height:14px; }
+  .mp-volume{ display:flex; align-items:center; gap:5px; width:60px; flex-shrink:0; }
   .mp-volume input[type="range"]{ -webkit-appearance:none; appearance:none;
     width:100%; height:3px; background:#26282e; border-radius:4px; outline:none; }
   .mp-volume input[type="range"]::-webkit-slider-thumb{ -webkit-appearance:none;
-    width:8px; height:8px; border-radius:50%; background:%%ACCENT%%; cursor:pointer; }
-  .mp-volume input[type="range"]::-moz-range-thumb{ width:8px; height:8px;
+    width:11px; height:11px; border-radius:50%; background:%%ACCENT%%; cursor:pointer; }
+  .mp-volume input[type="range"]::-moz-range-thumb{ width:11px; height:11px;
     border-radius:50%; background:%%ACCENT%%; cursor:pointer; border:none; }
   #mpVolumeIcon{ cursor:pointer; color:#8A8A93; display:flex; align-items:center;
     flex-shrink:0; }
-  #mpVolumeIcon svg{ display:block; width:12px; height:12px; }
+  #mpVolumeIcon svg{ display:block; width:16px; height:16px; }
   .mp-progress-track{ position:absolute; left:0; right:0; bottom:0; height:2px;
     background:#26282e; cursor:pointer; }
   .mp-progress-fill{ height:100%; width:0%; background:%%ACCENT%%; }
@@ -1362,8 +1362,8 @@ async function toggleMiniPlayer(){
   const miniRoot = document.getElementById('miniPlayerRoot');
 
   pipWindow = await documentPictureInPicture.requestWindow({
-    width: 360,
-    height: 36,
+    width: 400,
+    height: 48,
   });
 
   // Self-contained styles built specifically for this compact view —
