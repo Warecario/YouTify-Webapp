@@ -21,7 +21,18 @@
 
     <div class="auth-block">
       <button id="loginBtn" class="login-btn">Log in with Spotify</button>
-      <div class="swatch-label" id="playlistsLabel" style="display:none; margin-top:16px;">Your Playlists</div>
+      <div class="playlists-header" style="display:flex; align-items:center; justify-content:space-between; margin-top:16px;">
+        <div class="swatch-label" id="playlistsLabel" style="display:none; margin:0;">Your Playlists</div>
+        <button id="newPlaylistBtn" class="new-playlist-btn" style="display:none;" title="Create new playlist">+</button>
+      </div>
+      <div id="newPlaylistForm" class="new-playlist-form" style="display:none;">
+        <input type="text" id="newPlaylistName" placeholder="Playlist name" maxlength="100">
+        <label class="new-playlist-public"><input type="checkbox" id="newPlaylistPublic"> Public</label>
+        <div class="new-playlist-actions">
+          <button id="createPlaylistBtn" class="new-playlist-create">Create</button>
+          <button id="cancelPlaylistBtn" class="new-playlist-cancel">Cancel</button>
+        </div>
+      </div>
       <div id="playlists" class="playlists"></div>
 
       <div class="swatch-label" id="recentLabel" style="display:none; margin-top:16px;">Recently Played</div>
@@ -118,6 +129,10 @@
     Metadata via <a id="spotifyLink" href="#" target="_blank">Spotify</a><br>Playback via YouTube
   </div>
 
+  <button id="addToPlaylistBtn" class="mini-toggle" title="Add to Playlist">
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><path d="M17 8h6M20 5v6"/></svg>
+  </button>
+
   <button id="trackSelectToggleBtn" class="mini-toggle" title="Track Select">
     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>
   </button>
@@ -133,6 +148,14 @@
   <button id="miniToggleBtn" class="mini-toggle" title="Pop out mini player">
     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg>
   </button>
+</div>
+
+<div id="addToPlaylistPanel" class="queue-panel">
+  <div class="queue-panel-header">
+    <h3>Add to Playlist</h3>
+    <button class="modal-close" id="closeAddToPlaylist">✕</button>
+  </div>
+  <div id="addToPlaylistList" class="queue-list"></div>
 </div>
 
 <div id="trackSelectPanel" class="queue-panel">
