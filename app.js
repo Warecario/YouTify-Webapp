@@ -31,7 +31,7 @@ const PROXY_BASE_URL = "https://youtify-proxy.youtify.workers.dev";
    ============================================================ */
 const SPOTIFY_CLIENT_ID = "40fff33a4ef84ee38d6384928a605538";
 const REDIRECT_URI = window.location.origin + window.location.pathname;
-const SPOTIFY_SCOPES = "playlist-read-private playlist-read-collaborative user-library-read";
+const SPOTIFY_SCOPES = "playlist-read-private playlist-read-collaborative user-library-read playlist-modify-public playlist-modify-private";
 
 let spotifyAccessToken = null;
 let spotifyRefreshToken = null;
@@ -301,15 +301,15 @@ async function refreshSpotifyToken(){
   return true;
 }
 
-async function spotifyUserFetch(pathOrUrl){
+async function spotifyUserFetch(pathOrUrl, options = {}){
   const url = pathOrUrl.startsWith('http') ? pathOrUrl : `https://api.spotify.com/v1/${pathOrUrl}`;
-  let res = await fetch(url, {
-    headers: { Authorization: `Bearer ${spotifyAccessToken}` },
+  const doFetch = () => fetch(url, {
+    ...options,
+    headers: { Authorization: `Bearer ${spotifyAccessToken}`, ...(options.headers || {}) },
   });
+  let res = await doFetch();
   if (res.status === 401 && await refreshSpotifyToken()){
-    res = await fetch(url, {
-      headers: { Authorization: `Bearer ${spotifyAccessToken}` },
-    });
+    res = await doFetch();
   }
   return res;
 }
@@ -317,6 +317,7 @@ async function spotifyUserFetch(pathOrUrl){
 async function afterLogin(){
   document.getElementById('loginBtn').style.display = 'none';
   document.getElementById('logoutBtn').style.display = 'block';
+  document.getElementById('newPlaylistBtn').style.display = 'flex';
 
   try {
     const meRes = await spotifyUserFetch('me');
@@ -363,6 +364,31 @@ async function loadUserPlaylists(){
   }
 }
 
+/* ---------- Creating & adding to playlists ----------
+   Feb 2026 migration: POST /users/{user_id}/playlists was removed —
+   creating a playlist now goes through POST /me/playlists instead,
+   which conveniently means we don't need the user's Spotify ID at all. */
+
+async function createPlaylist(name, isPublic){
+  const res = await spotifyUserFetch('me/playlists', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, public: !!isPublic }),
+  });
+  if (!res.ok) throw new Error('Could not create the playlist.');
+  return res.json();
+}
+
+async function addTrackToPlaylist(playlistId, trackUri){
+  const res = await spotifyUserFetch(`playlists/${playlistId}/tracks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ uris: [trackUri] }),
+  });
+  if (!res.ok) throw new Error('Could not add that track.');
+  return res.json();
+}
+
 async function loadLikedSongs(rowEl){
   document.querySelectorAll('.playlist-row').forEach(r => r.classList.remove('active'));
   if (rowEl) rowEl.classList.add('active');
@@ -387,6 +413,7 @@ async function loadLikedSongs(rowEl){
         .map(entry => entry.track)
         .filter(Boolean)
         .map(t => ({
+          uri: t.uri,
           name: t.name,
           artists: t.artists.map(a => a.name),
           album: { images: t.album.images },
@@ -437,6 +464,7 @@ async function loadPlaylistTracks(playlistId, playlistName, rowEl){
         .map(entry => entry.item)
         .filter(Boolean)
         .map(t => ({
+          uri: t.uri,
           name: t.name,
           artists: t.artists.map(a => a.name),
           album: { images: t.album.images },
@@ -1292,6 +1320,86 @@ document.getElementById('closeTrackSelect').addEventListener('click', () => {
   trackSelectPanelEl.classList.remove('open');
 });
 
+const newPlaylistFormEl = document.getElementById('newPlaylistForm');
+document.getElementById('newPlaylistBtn').addEventListener('click', () => {
+  const isOpen = newPlaylistFormEl.style.display !== 'none';
+  newPlaylistFormEl.style.display = isOpen ? 'none' : 'flex';
+  if (!isOpen) document.getElementById('newPlaylistName').focus();
+});
+document.getElementById('cancelPlaylistBtn').addEventListener('click', () => {
+  newPlaylistFormEl.style.display = 'none';
+  document.getElementById('newPlaylistName').value = '';
+});
+document.getElementById('createPlaylistBtn').addEventListener('click', async () => {
+  const nameInput = document.getElementById('newPlaylistName');
+  const name = nameInput.value.trim();
+  if (!name) return;
+  const isPublic = document.getElementById('newPlaylistPublic').checked;
+  setStatus('Creating playlist…');
+  try {
+    await createPlaylist(name, isPublic);
+    nameInput.value = '';
+    newPlaylistFormEl.style.display = 'none';
+    setStatus('');
+    await loadUserPlaylists();
+  } catch (err){
+    setStatus(err.message);
+  }
+});
+
+const addToPlaylistPanelEl = document.getElementById('addToPlaylistPanel');
+document.getElementById('addToPlaylistBtn').addEventListener('click', () => {
+  if (addToPlaylistPanelEl.classList.contains('open')){
+    addToPlaylistPanelEl.classList.remove('open');
+  } else {
+    showAddToPlaylist();
+  }
+});
+document.getElementById('closeAddToPlaylist').addEventListener('click', () => {
+  addToPlaylistPanelEl.classList.remove('open');
+});
+
+function showAddToPlaylist(){
+  addToPlaylistPanelEl.classList.add('open');
+  const listEl = document.getElementById('addToPlaylistList');
+  const track = getCurrentTrackObj();
+
+  if (!spotifyAccessToken){
+    listEl.innerHTML = '<p class="queue-empty-hint">Log in with Spotify first.</p>';
+    return;
+  }
+  if (!track){
+    listEl.innerHTML = '<p class="queue-empty-hint">Nothing playing yet.</p>';
+    return;
+  }
+  if (!track.uri){
+    listEl.innerHTML = '<p class="queue-empty-hint">This track cannot be added (no Spotify ID).</p>';
+    return;
+  }
+  if (!cachedUserPlaylists.length){
+    listEl.innerHTML = '<p class="queue-empty-hint">No playlists yet — create one first.</p>';
+    return;
+  }
+
+  listEl.innerHTML = '';
+  cachedUserPlaylists.forEach(pl => {
+    const row = document.createElement('div');
+    row.className = 'playlist-pick-row';
+    row.textContent = pl.name;
+    row.addEventListener('click', async () => {
+      setStatus(`Adding to "${pl.name}"…`);
+      try {
+        await addTrackToPlaylist(pl.id, track.uri);
+        setStatus(`Added to "${pl.name}".`);
+        addToPlaylistPanelEl.classList.remove('open');
+      } catch (err){
+        setStatus(err.message);
+      }
+    });
+    listEl.appendChild(row);
+  });
+}
+
 document.getElementById('logoutBtn').addEventListener('click', () => {
   spotifyAccessToken = null;
   spotifyRefreshToken = null;
@@ -1301,6 +1409,8 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
   document.getElementById('logoutBtn').style.display = 'none';
   document.getElementById('userLabel').style.display = 'none';
   document.getElementById('playlistsLabel').style.display = 'none';
+  document.getElementById('newPlaylistBtn').style.display = 'none';
+  document.getElementById('newPlaylistForm').style.display = 'none';
   document.getElementById('playlists').innerHTML = '';
   cachedUserPlaylists = [];
 });
