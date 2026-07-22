@@ -88,7 +88,9 @@ async function handleSpotifySearch(url, env) {
 
   // Only forward the fields the frontend actually needs — keeps the
   // response small and avoids leaking anything extra from Spotify.
+  // `uri` is included so a track can later be added to a playlist.
   const tracks = data.tracks.items.map((t) => ({
+    uri: t.uri,
     name: t.name,
     artists: t.artists.map((a) => a.name),
     album: {
