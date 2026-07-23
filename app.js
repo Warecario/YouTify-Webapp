@@ -241,6 +241,13 @@ async function startSpotifyLogin(){
     code_challenge_method: 'S256',
     code_challenge: challenge,
     state: verifier,
+    // Without this, Spotify can silently reuse whatever scopes were
+    // approved the first time a person logged in — meaning a later
+    // scope addition (like playlist-modify) never actually gets
+    // granted even after logging out/in again. Forcing the dialog
+    // guarantees the full current scope list is shown and approved
+    // every time.
+    show_dialog: 'true',
   });
   window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
