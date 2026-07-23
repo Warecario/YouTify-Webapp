@@ -280,6 +280,15 @@ async function handleSpotifyRedirect(){
     spotifyAccessToken = data.access_token;
     spotifyRefreshToken = data.refresh_token;
     setCookie('youtify_spotify_refresh', spotifyRefreshToken, 30);
+
+    // Spotify's token response lists exactly what was actually granted —
+    // check it directly instead of guessing from later API errors.
+    const grantedScopes = (data.scope || '').split(' ');
+    const missing = SPOTIFY_SCOPES.split(' ').filter(s => !grantedScopes.includes(s));
+    if (missing.length){
+      setStatus(`Logged in, but Spotify did not grant: ${missing.join(', ')}. Try revoking the app at spotify.com/account/apps and logging in again.`);
+    }
+
     await afterLogin();
   } catch (err){
     setStatus(err.message);
