@@ -385,7 +385,12 @@ async function addTrackToPlaylist(playlistId, trackUri){
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ uris: [trackUri] }),
   });
-  if (!res.ok) throw new Error('Could not add that track.');
+  if (!res.ok){
+    if (res.status === 403){
+      throw new Error('Spotify rejected this (missing permission) — log out and back in to grant playlist-editing access.');
+    }
+    throw new Error(`Could not add that track (${res.status}).`);
+  }
   return res.json();
 }
 
@@ -714,7 +719,10 @@ function showSettings(){
 // player instance, just no longer visually tucked away. This is simply
 // showing the video half of the same official YouTube embed that's
 // already providing the audio.
+let viewBeforeVideo = 'home';
+
 function showVideo(){
+  if (currentViewName !== 'video') viewBeforeVideo = currentViewName;
   currentViewName = 'video';
   setStatus('');
   searchWrapEl.style.display = 'none';
@@ -745,11 +753,13 @@ function showVideo(){
 }
 
 // Toggling the button while already in video mode needs to actually
-// leave it — otherwise there's no way back to Home/Search/Settings
-// from the button itself.
+// leave it — and it should return to whatever view you were on
+// before, not always dump you back at Home.
 function toggleVideo(){
   if (currentViewName === 'video'){
-    showHome();
+    if (viewBeforeVideo === 'results') showSearchResults();
+    else if (viewBeforeVideo === 'settings') showSettings();
+    else showHome();
   } else {
     showVideo();
   }
@@ -1089,6 +1099,22 @@ function updateNowPlayingUI(track){
   if (currentViewName === 'video'){
     document.getElementById('videoNowPlaying').textContent = `${track.name} — ${artists}`;
   }
+  renderNowPlayingPanel(track);
+}
+
+// A compact, Spotify-style "now playing" companion panel — large art,
+// title, artist, and a link back to the track on Spotify.
+function renderNowPlayingPanel(track){
+  const contentEl = document.getElementById('nowPlayingContent');
+  if (!contentEl) return;
+  const art = track.album.images[0]?.url || '';
+  const artists = track.artists.join(', ');
+  contentEl.innerHTML = `
+    ${art ? `<img class="now-playing-art" src="${art}" alt="">` : ''}
+    <div class="now-playing-title">${track.name}</div>
+    <div class="now-playing-artist">${artists}</div>
+    <a class="now-playing-link" href="${track.external_url || '#'}" target="_blank" rel="noopener">Open on Spotify ↗</a>
+  `;
 }
 
 async function playTrack(track, resumeAtSeconds){
@@ -1357,6 +1383,14 @@ document.getElementById('addToPlaylistBtn').addEventListener('click', () => {
 });
 document.getElementById('closeAddToPlaylist').addEventListener('click', () => {
   addToPlaylistPanelEl.classList.remove('open');
+});
+
+const nowPlayingPanelEl = document.getElementById('nowPlayingPanel');
+document.getElementById('disc').addEventListener('click', () => {
+  nowPlayingPanelEl.classList.toggle('open');
+});
+document.getElementById('closeNowPlaying').addEventListener('click', () => {
+  nowPlayingPanelEl.classList.remove('open');
 });
 
 function showAddToPlaylist(){
