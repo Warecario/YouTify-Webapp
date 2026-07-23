@@ -386,10 +386,20 @@ async function addTrackToPlaylist(playlistId, trackUri){
     body: JSON.stringify({ uris: [trackUri] }),
   });
   if (!res.ok){
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.error?.message || '';
+    } catch (_) { /* body wasn't JSON, ignore */ }
+
     if (res.status === 403){
-      throw new Error('Spotify rejected this (missing permission) — log out and back in to grant playlist-editing access.');
+      throw new Error(
+        detail
+          ? `Spotify said: "${detail}" — likely missing permission (try logging out/in) or you don't own this playlist.`
+          : 'Spotify rejected this (403) — likely missing permission (try logging out/in) or you don\u2019t own this playlist.'
+      );
     }
-    throw new Error(`Could not add that track (${res.status}).`);
+    throw new Error(`Could not add that track (${res.status}${detail ? ': ' + detail : ''}).`);
   }
   return res.json();
 }
