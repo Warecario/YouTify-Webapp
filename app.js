@@ -241,6 +241,13 @@ async function startSpotifyLogin(){
     code_challenge_method: 'S256',
     code_challenge: challenge,
     state: verifier,
+    // Without this, Spotify can silently reuse whatever scopes were
+    // approved the first time a person logged in — meaning a later
+    // scope addition (like playlist-modify) never actually gets
+    // granted even after logging out/in again. Forcing the dialog
+    // guarantees the full current scope list is shown and approved
+    // every time.
+    show_dialog: 'true',
   });
   window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
 }
@@ -273,6 +280,15 @@ async function handleSpotifyRedirect(){
     spotifyAccessToken = data.access_token;
     spotifyRefreshToken = data.refresh_token;
     setCookie('youtify_spotify_refresh', spotifyRefreshToken, 30);
+
+    // Spotify's token response lists exactly what was actually granted —
+    // check it directly instead of guessing from later API errors.
+    const grantedScopes = (data.scope || '').split(' ');
+    const missing = SPOTIFY_SCOPES.split(' ').filter(s => !grantedScopes.includes(s));
+    if (missing.length){
+      setStatus(`Logged in, but Spotify did not grant: ${missing.join(', ')}. Try revoking the app at spotify.com/account/apps and logging in again.`);
+    }
+
     await afterLogin();
   } catch (err){
     setStatus(err.message);
@@ -385,7 +401,22 @@ async function addTrackToPlaylist(playlistId, trackUri){
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ uris: [trackUri] }),
   });
-  if (!res.ok) throw new Error('Could not add that track.');
+  if (!res.ok){
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body?.error?.message || '';
+    } catch (_) { /* body wasn't JSON, ignore */ }
+
+    if (res.status === 403){
+      throw new Error(
+        detail
+          ? `Spotify said: "${detail}" — likely missing permission (try logging out/in) or you don't own this playlist.`
+          : 'Spotify rejected this (403) — likely missing permission (try logging out/in) or you don\u2019t own this playlist.'
+      );
+    }
+    throw new Error(`Could not add that track (${res.status}${detail ? ': ' + detail : ''}).`);
+  }
   return res.json();
 }
 
@@ -714,7 +745,10 @@ function showSettings(){
 // player instance, just no longer visually tucked away. This is simply
 // showing the video half of the same official YouTube embed that's
 // already providing the audio.
+let viewBeforeVideo = 'home';
+
 function showVideo(){
+  if (currentViewName !== 'video') viewBeforeVideo = currentViewName;
   currentViewName = 'video';
   setStatus('');
   searchWrapEl.style.display = 'none';
@@ -745,11 +779,13 @@ function showVideo(){
 }
 
 // Toggling the button while already in video mode needs to actually
-// leave it — otherwise there's no way back to Home/Search/Settings
-// from the button itself.
+// leave it — and it should return to whatever view you were on
+// before, not always dump you back at Home.
 function toggleVideo(){
   if (currentViewName === 'video'){
-    showHome();
+    if (viewBeforeVideo === 'results') showSearchResults();
+    else if (viewBeforeVideo === 'settings') showSettings();
+    else showHome();
   } else {
     showVideo();
   }
@@ -1089,6 +1125,22 @@ function updateNowPlayingUI(track){
   if (currentViewName === 'video'){
     document.getElementById('videoNowPlaying').textContent = `${track.name} — ${artists}`;
   }
+  renderNowPlayingPanel(track);
+}
+
+// A compact, Spotify-style "now playing" companion panel — large art,
+// title, artist, and a link back to the track on Spotify.
+function renderNowPlayingPanel(track){
+  const contentEl = document.getElementById('nowPlayingContent');
+  if (!contentEl) return;
+  const art = track.album.images[0]?.url || '';
+  const artists = track.artists.join(', ');
+  contentEl.innerHTML = `
+    ${art ? `<img class="now-playing-art" src="${art}" alt="">` : ''}
+    <div class="now-playing-title">${track.name}</div>
+    <div class="now-playing-artist">${artists}</div>
+    <a class="now-playing-link" href="${track.external_url || '#'}" target="_blank" rel="noopener">Open on Spotify ↗</a>
+  `;
 }
 
 async function playTrack(track, resumeAtSeconds){
@@ -1357,6 +1409,14 @@ document.getElementById('addToPlaylistBtn').addEventListener('click', () => {
 });
 document.getElementById('closeAddToPlaylist').addEventListener('click', () => {
   addToPlaylistPanelEl.classList.remove('open');
+});
+
+const nowPlayingPanelEl = document.getElementById('nowPlayingPanel');
+document.getElementById('disc').addEventListener('click', () => {
+  nowPlayingPanelEl.classList.toggle('open');
+});
+document.getElementById('closeNowPlaying').addEventListener('click', () => {
+  nowPlayingPanelEl.classList.remove('open');
 });
 
 function showAddToPlaylist(){
