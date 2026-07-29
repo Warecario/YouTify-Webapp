@@ -7,3 +7,4 @@ A Web App that uses Spotify as the Metadata and YouTube as the Back-End.
 - Android App
 - (Maybe) PC App
 - No IOS app, IOS sucks
+- Make it so there are sub-url points so easy access for automation.
