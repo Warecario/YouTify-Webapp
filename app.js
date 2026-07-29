@@ -284,10 +284,15 @@ async function handleSpotifyRedirect(){
 
     // Spotify's token response lists exactly what was actually granted —
     // check it directly instead of guessing from later API errors.
-    const grantedScopes = (data.scope || '').split(' ');
-    const missing = SPOTIFY_SCOPES.split(' ').filter(s => !grantedScopes.includes(s));
-    if (missing.length){
-      setStatus(`Logged in, but Spotify did not grant: ${missing.join(', ')}. Try revoking the app at spotify.com/account/apps and logging in again.`);
+    // Per OAuth2 spec, Spotify may omit `scope` entirely when it exactly
+    // matches what was requested — treat that as "all good" rather than
+    // "everything is missing".
+    if (data.scope){
+      const grantedScopes = data.scope.split(' ');
+      const missing = SPOTIFY_SCOPES.split(' ').filter(s => !grantedScopes.includes(s));
+      if (missing.length){
+        setStatus(`Logged in, but Spotify did not grant: ${missing.join(', ')}. Try revoking the app at spotify.com/account/apps and logging in again.`);
+      }
     }
 
     await afterLogin();
