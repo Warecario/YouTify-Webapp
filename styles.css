@@ -387,6 +387,8 @@
     padding:8px; border-radius:6px; cursor:pointer; font-size:0.85rem;
   }
   .playlist-pick-row:hover{ background:var(--panel-hover); }
+  .playlist-pick-row.not-owned{ opacity:0.55; }
+  .playlist-owner-tag{ color:var(--muted); font-size:0.75rem; }
 
   /* ---------- Main content ---------- */
   .main{

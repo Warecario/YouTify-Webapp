@@ -34,6 +34,7 @@ const REDIRECT_URI = window.location.origin + window.location.pathname;
 const SPOTIFY_SCOPES = "playlist-read-private playlist-read-collaborative user-library-read playlist-modify-public playlist-modify-private";
 
 let spotifyAccessToken = null;
+let spotifyUserId = null;
 let spotifyRefreshToken = null;
 let currentPlaylistContext = null; // { id, name } or null when playing from search
 let pendingRestoreTrack = null;
@@ -339,6 +340,7 @@ async function afterLogin(){
     const meRes = await spotifyUserFetch('me');
     if (meRes.ok){
       const me = await meRes.json();
+      spotifyUserId = me.id;
       const label = document.getElementById('userLabel');
       label.style.display = 'flex';
       const img = me.images?.[0]?.url;
@@ -368,8 +370,16 @@ async function loadUserPlaylists(){
 
     data.items.forEach(pl => {
       const row = document.createElement('div');
+      const isOwnedByYou = pl.owner?.id === spotifyUserId;
       row.className = 'playlist-row';
-      row.textContent = pl.name;
+      // Spotify's "Get Current User's Playlists" returns everything you
+      // follow, not just ones you created — the app never made that
+      // distinction visible before, which is exactly what caused the
+      // confusion. Anything not owned by you literally cannot accept
+      // added tracks, no matter what permissions are granted.
+      row.innerHTML = isOwnedByYou
+        ? pl.name
+        : `${pl.name} <span class="playlist-owner-tag">· by ${pl.owner?.display_name || 'someone else'}</span>`;
       row.addEventListener('click', () => loadPlaylistTracks(pl.id, pl.name, row));
       listEl.appendChild(row);
     });
@@ -1443,10 +1453,20 @@ function showAddToPlaylist(){
 
   listEl.innerHTML = '';
   cachedUserPlaylists.forEach(pl => {
+    const isOwnedByYou = pl.owner?.id === spotifyUserId;
     const row = document.createElement('div');
-    row.className = 'playlist-pick-row';
-    row.textContent = pl.name;
+    row.className = 'playlist-pick-row' + (isOwnedByYou ? '' : ' not-owned');
+    row.innerHTML = isOwnedByYou
+      ? pl.name
+      : `${pl.name} <span class="playlist-owner-tag">· by ${pl.owner?.display_name || 'someone else'}</span>`;
+    if (!isOwnedByYou){
+      row.title = 'You can only add tracks to playlists you own.';
+    }
     row.addEventListener('click', async () => {
+      if (!isOwnedByYou){
+        setStatus(`Can't add — "${pl.name}" belongs to ${pl.owner?.display_name || 'someone else'}, not you.`);
+        return;
+      }
       setStatus(`Adding to "${pl.name}"…`);
       try {
         await addTrackToPlaylist(pl.id, track.uri);
@@ -1463,6 +1483,7 @@ function showAddToPlaylist(){
 document.getElementById('logoutBtn').addEventListener('click', () => {
   spotifyAccessToken = null;
   spotifyRefreshToken = null;
+  spotifyUserId = null;
   deleteCookie('youtify_spotify_refresh');
   deleteCookie('youtify_last_playlist');
   document.getElementById('loginBtn').style.display = 'block';
