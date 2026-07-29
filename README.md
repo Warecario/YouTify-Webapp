@@ -3,5 +3,7 @@ A Web App that uses Spotify as the Metadata and YouTube as the Back-End.
 
 **To Do:**
 - (Possibly) Playlist Maker
-- Mobile Mode
-- (Possibly) Devices list, bluetooth, etc
+- Mobile Mode -
+- Android App
+- (Maybe) PC App
+- No IOS app, IOS sucks
