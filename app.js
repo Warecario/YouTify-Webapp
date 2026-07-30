@@ -1363,6 +1363,28 @@ document.getElementById('brandHome').addEventListener('click', showHome);
 showHome();
 handleSpotifyRedirect().then(restoreSession);
 
+/* ---------- Mobile drawer ---------- */
+const sidebarEl = document.querySelector('.sidebar');
+const sidebarBackdropEl = document.getElementById('sidebarBackdrop');
+
+function closeMobileDrawer(){
+  sidebarEl.classList.remove('open');
+  sidebarBackdropEl.classList.remove('open');
+}
+document.getElementById('mobileMenuBtn').addEventListener('click', () => {
+  sidebarEl.classList.toggle('open');
+  sidebarBackdropEl.classList.toggle('open');
+});
+sidebarBackdropEl.addEventListener('click', closeMobileDrawer);
+// Picking anything from the drawer (a playlist, settings, home) should
+// tuck it back away automatically rather than leaving it covering the
+// screen on a phone.
+sidebarEl.addEventListener('click', (e) => {
+  if (e.target.closest('.playlist-row, #settingsBtn, #brandHome, .footer-link a')){
+    closeMobileDrawer();
+  }
+});
+
 document.getElementById('settingsBtn').addEventListener('click', showSettings);
 document.getElementById('videoToggleBtn').addEventListener('click', toggleVideo);
 

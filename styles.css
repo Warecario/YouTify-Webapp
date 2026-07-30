@@ -8,9 +8,11 @@
     --text:#F2F2F0;
     --muted:#8A8A93;
     --line:#26282e;
-    --bottom-bar-h:88px;
+    --bottom-bar-h:clamp(64px, 9vw, 88px);
+    --sidebar-w:clamp(190px, 20vw, 220px);
   }
   *{box-sizing:border-box;}
+  html{ -webkit-text-size-adjust:100%; }
   body{
     margin:0;
     background:var(--bg);
@@ -24,9 +26,24 @@
     height:100vh;
   }
 
+  /* ---------- Mobile hamburger + backdrop (hidden on desktop) ---------- */
+  .mobile-menu-btn{
+    display:none;
+    position:fixed; top:12px; left:12px; z-index:200;
+    background:var(--panel); border:1px solid var(--line); color:var(--text);
+    width:38px; height:38px; border-radius:8px;
+    align-items:center; justify-content:center; cursor:pointer;
+  }
+  .sidebar-backdrop{
+    display:none;
+    position:fixed; inset:0; background:rgba(0,0,0,0.6);
+    z-index:150;
+  }
+  .sidebar-backdrop.open{ display:block; }
+
   /* ---------- Sidebar ---------- */
   .sidebar{
-    width:220px;
+    width:var(--sidebar-w);
     flex-shrink:0;
     background:var(--sidebar);
     padding:24px 18px;
@@ -471,13 +488,13 @@
   /* ---------- Bottom player bar ---------- */
   #player-bar{
     position:fixed;
-    left:220px; right:0; bottom:0; height:var(--bottom-bar-h);
+    left:var(--sidebar-w); right:0; bottom:0; height:var(--bottom-bar-h);
     background:var(--panel);
     border-top:1px solid var(--line);
     display:none;
     align-items:center;
-    padding:0 20px;
-    gap:20px;
+    padding:0 clamp(10px, 2vw, 20px);
+    gap:clamp(8px, 2vw, 20px);
     transition:all 0.18s ease;
   }
   .mini-toggle{
@@ -485,7 +502,7 @@
     cursor:pointer; padding:8px; flex-shrink:0;
     display:flex; align-items:center; justify-content:center;
   }
-  .mini-toggle svg{ width:19px; height:19px; }
+  .mini-toggle svg{ width:clamp(16px, 1.6vw, 19px); height:clamp(16px, 1.6vw, 19px); }
   .mini-toggle:hover{ color:var(--text); }
 
   #player-bar.mini{
@@ -683,3 +700,59 @@
     border-radius:12px; overflow:hidden;
   }
   #yt-hidden iframe{ width:100% !important; height:100% !important; border:none; }
+
+  /* ==================================================================
+     Mobile mode (<=768px) — sidebar becomes a slide-in drawer, the
+     player bar wraps onto multiple rows instead of clipping offscreen,
+     and the side panels (Queue, Track Select, Add to Playlist, Now
+     Playing) become full-width bottom sheets instead of a 300px rail
+     that would eat most of a phone screen.
+     ================================================================== */
+  @media (max-width: 768px){
+    .mobile-menu-btn{ display:flex; }
+
+    .sidebar{
+      position:fixed; top:0; left:0; bottom:0;
+      width:min(280px, 82vw);
+      z-index:180;
+      transform:translateX(-100%);
+      transition:transform 0.2s ease;
+      box-shadow:0 0 40px rgba(0,0,0,0.5);
+    }
+    .sidebar.open{ transform:translateX(0); }
+
+    .main{ width:100%; }
+
+    #player-bar{
+      left:0;
+      height:auto;
+      flex-wrap:wrap;
+      padding:10px 12px;
+      row-gap:8px;
+    }
+    #player-bar .now-block{ order:1; width:auto; flex:1 1 auto; }
+    #player-bar .transport{ order:3; flex:1 1 100%; }
+    #player-bar .volume-block{ order:2; width:auto; }
+    #player-bar .source-block{ display:none; }
+    #player-bar .now-meta{ max-width:40vw; }
+
+    /* Document Picture-in-Picture doesn't exist on mobile browsers —
+       no point showing a button that can only fall back awkwardly. */
+    #miniToggleBtn{ display:none; }
+
+    .queue-panel{
+      left:0; right:0; width:auto;
+      top:auto; bottom:calc(-1 * (100vh - var(--bottom-bar-h)));
+      height:70vh;
+      border-left:none;
+      border-top:1px solid var(--line);
+      border-radius:16px 16px 0 0;
+      transition:bottom 0.2s ease;
+    }
+    .queue-panel.open{ bottom:var(--bottom-bar-h); right:0; }
+
+    .video-slot{ max-width:100%; }
+    .playlist-grid-view{ grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:12px; }
+    .quick-grid{ grid-template-columns:1fr; }
+    .settings-card{ max-width:none; }
+  }
