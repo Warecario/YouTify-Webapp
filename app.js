@@ -160,6 +160,17 @@ const resultsEl = document.getElementById('results');
 const homeViewEl = document.getElementById('homeView');
 const queryEl = document.getElementById('query');
 const playerBarEl = document.getElementById('player-bar');
+
+// The player bar's real height changes on mobile (it wraps to two rows),
+// but everything reserving space for it (main content padding, the
+// video overlay's position, side panel positioning) was reading a
+// fixed CSS guess. A ResizeObserver keeps that guess always accurate,
+// which fixes both the video-overlapping-the-bar bug and the
+// can't-scroll-all-the-way-down bug in one place.
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--bottom-bar-h', `${playerBarEl.offsetHeight}px`);
+}).observe(playerBarEl);
+
 const prevBtn = document.getElementById('prevBtn');
 const nextBtn = document.getElementById('nextBtn');
 const shuffleBtn = document.getElementById('shuffleBtn');

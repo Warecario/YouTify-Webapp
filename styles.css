@@ -731,7 +731,7 @@
       row-gap:8px;
     }
     #player-bar .now-block{ order:1; width:auto; flex:1 1 auto; }
-    #player-bar .transport{ order:3; flex:1 1 100%; }
+    #player-bar .transport{ order:3; flex:1 1 100%; align-items:flex-start; }
     #player-bar .volume-block{ order:2; width:auto; }
     #player-bar .source-block{ display:none; }
     #player-bar .now-meta{ max-width:40vw; }
