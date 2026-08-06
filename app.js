@@ -161,16 +161,6 @@ const homeViewEl = document.getElementById('homeView');
 const queryEl = document.getElementById('query');
 const playerBarEl = document.getElementById('player-bar');
 
-// The player bar's real height changes on mobile (it wraps to two rows),
-// but everything reserving space for it (main content padding, the
-// video overlay's position, side panel positioning) was reading a
-// fixed CSS guess. A ResizeObserver keeps that guess always accurate,
-// which fixes both the video-overlapping-the-bar bug and the
-// can't-scroll-all-the-way-down bug in one place.
-new ResizeObserver(() => {
-  document.documentElement.style.setProperty('--bottom-bar-h', `${playerBarEl.offsetHeight}px`);
-}).observe(playerBarEl);
-
 const prevBtn = document.getElementById('prevBtn');
 const nextBtn = document.getElementById('nextBtn');
 const shuffleBtn = document.getElementById('shuffleBtn');
@@ -239,9 +229,6 @@ async function sha256Base64Url(plain){
 }
 
 async function startSpotifyLogin(){
-  // The PKCE verifier doesn't need to be kept secret from this app —
-  // only from anyone intercepting the auth code in transit — so we
-  // round-trip it through the "state" param instead of browser storage.
   const verifier = randomString(64);
   const challenge = await sha256Base64Url(verifier);
 
@@ -253,12 +240,6 @@ async function startSpotifyLogin(){
     code_challenge_method: 'S256',
     code_challenge: challenge,
     state: verifier,
-    // Without this, Spotify can silently reuse whatever scopes were
-    // approved the first time a person logged in — meaning a later
-    // scope addition (like playlist-modify) never actually gets
-    // granted even after logging out/in again. Forcing the dialog
-    // guarantees the full current scope list is shown and approved
-    // every time.
     show_dialog: 'true',
   });
   window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
@@ -270,7 +251,6 @@ async function handleSpotifyRedirect(){
   const verifier = url.searchParams.get('state');
   if (!code || !verifier) return;
 
-  // Clean the URL so refreshing doesn't replay the auth code
   window.history.replaceState({}, document.title, REDIRECT_URI);
 
   const body = new URLSearchParams({
@@ -293,11 +273,6 @@ async function handleSpotifyRedirect(){
     spotifyRefreshToken = data.refresh_token;
     setCookie('youtify_spotify_refresh', spotifyRefreshToken, 30);
 
-    // Spotify's token response lists exactly what was actually granted —
-    // check it directly instead of guessing from later API errors.
-    // Per OAuth2 spec, Spotify may omit `scope` entirely when it exactly
-    // matches what was requested — treat that as "all good" rather than
-    // "everything is missing".
     if (data.scope){
       const grantedScopes = data.scope.split(' ');
       const missing = SPOTIFY_SCOPES.split(' ').filter(s => !grantedScopes.includes(s));
@@ -388,11 +363,6 @@ async function loadUserPlaylists(){
       const row = document.createElement('div');
       const isOwnedByYou = pl.owner?.id === spotifyUserId;
       row.className = 'playlist-row';
-      // Spotify's "Get Current User's Playlists" returns everything you
-      // follow, not just ones you created — the app never made that
-      // distinction visible before, which is exactly what caused the
-      // confusion. Anything not owned by you literally cannot accept
-      // added tracks, no matter what permissions are granted.
       row.innerHTML = isOwnedByYou
         ? pl.name
         : `${pl.name} <span class="playlist-owner-tag">· by ${pl.owner?.display_name || 'someone else'}</span>`;
@@ -405,11 +375,6 @@ async function loadUserPlaylists(){
     setStatus(err.message);
   }
 }
-
-/* ---------- Creating & adding to playlists ----------
-   Feb 2026 migration: POST /users/{user_id}/playlists was removed —
-   creating a playlist now goes through POST /me/playlists instead,
-   which conveniently means we don't need the user's Spotify ID at all. */
 
 async function createPlaylist(name, isPublic){
   const res = await spotifyUserFetch('me/playlists', {
@@ -454,8 +419,6 @@ async function loadLikedSongs(rowEl){
   setStatus('Loading Liked Songs…');
   resultsEl.innerHTML = '';
   try {
-    // Unlike playlist items, GET /me/tracks was unaffected by the Feb
-    // 2026 migration — still uses the { track: {...} } shape.
     let nextUrl = 'me/tracks?limit=50';
     let tracks = [];
     let pageCount = 0;
@@ -503,14 +466,10 @@ async function loadPlaylistTracks(playlistId, playlistName, rowEl){
   setStatus(`Loading "${playlistName}"…`);
   resultsEl.innerHTML = '';
   try {
-    // Feb 2026 migration: /playlists/{id}/tracks was removed in favor
-    // of /playlists/{id}/items (and item.track became item.item).
-    // Spotify paginates results, so follow "next" until the whole
-    // playlist is loaded rather than stopping at the first page.
     let nextUrl = `playlists/${playlistId}/items?limit=50`;
     let tracks = [];
     let pageCount = 0;
-    const MAX_PAGES = 40; // safety cap — ~2000 tracks, far past any real playlist
+    const MAX_PAGES = 40;
 
     while (nextUrl && pageCount < MAX_PAGES){
       setStatus(`Loading "${playlistName}"… (${tracks.length} tracks so far)`);
@@ -547,13 +506,11 @@ async function loadPlaylistTracks(playlistId, playlistName, rowEl){
   }
 }
 
-/* ---------- Spotify + YouTube, via the proxy (no keys client-side) ---------- */
-
 async function searchSpotify(q){
   const url = `${PROXY_BASE_URL}/api/spotify-search?q=${encodeURIComponent(q)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("Search failed — is the proxy deployed and reachable?");
-  return res.json(); // { tracks: [...] }
+  return res.json();
 }
 
 async function findYouTubeVideoId(title, artist){
@@ -574,8 +531,6 @@ async function fetchYouTubeAlternatives(title, artist){
   const data = await res.json();
   return data.results || [];
 }
-
-/* ---------- YouTube IFrame Player (hidden, audio-only use) ---------- */
 
 function loadYouTubeAPI(){
   return new Promise((resolve) => {
@@ -660,15 +615,11 @@ function updateProgress(){
   document.getElementById('timeDur').textContent = formatTime(dur);
   mpProgressFill.style.width = pct + '%';
 
-  // Save roughly every 2 seconds (updateProgress runs every 400ms)
-  // rather than on every tick.
   positionSaveCounter++;
   if (positionSaveCounter % 5 === 0){
     setCookie('youtify_last_position', Math.floor(cur), 30);
   }
 }
-
-/* ---------- Search + queue ---------- */
 
 async function runSearch(){
   const q = queryEl.value.trim();
@@ -692,8 +643,6 @@ async function runSearch(){
   }
 }
 
-/* ---------- Home view ---------- */
-
 const searchWrapEl = document.querySelector('.search-wrap');
 const settingsViewEl = document.getElementById('settingsView');
 const resultsHeaderEl = document.getElementById('resultsHeader');
@@ -703,18 +652,22 @@ const ytHiddenEl = document.getElementById('yt-hidden');
 
 // IMPORTANT: the iframe must never be moved to a different DOM parent —
 // browsers reload an <iframe> whenever it's re-parented, which would
-// sever it from the YT.Player instance tracking it (breaking progress,
-// button state, and track-change syncing, and resetting it back to
-// YouTube's default full chrome). Instead, video mode repositions the
-// iframe's permanent container in place, directly on top of the visible
-// placeholder slot, using fixed positioning — the iframe itself never
-// moves in the DOM tree.
+// sever it from the YT.Player instance tracking it. Video mode instead
+// repositions the iframe's permanent container in place, directly on
+// top of the visible placeholder slot — the iframe itself never moves
+// in the DOM tree.
+//
+// It's positioned via `position:absolute` relative to `.main-scroll`
+// (its actual DOM parent), using offsetTop/offsetLeft rather than
+// getBoundingClientRect(). That means it scrolls naturally along with
+// the page's content — no scroll-event listener needed to keep it
+// glued in place, and no risk of viewport-relative math drifting out
+// of sync with whatever the page happens to be scrolled to.
 function positionVideoOverlay(){
-  const rect = videoSlotEl.getBoundingClientRect();
-  ytHiddenEl.style.top = `${rect.top}px`;
-  ytHiddenEl.style.left = `${rect.left}px`;
-  ytHiddenEl.style.width = `${rect.width}px`;
-  ytHiddenEl.style.height = `${rect.height}px`;
+  ytHiddenEl.style.top = `${videoSlotEl.offsetTop}px`;
+  ytHiddenEl.style.left = `${videoSlotEl.offsetLeft}px`;
+  ytHiddenEl.style.width = `${videoSlotEl.offsetWidth}px`;
+  ytHiddenEl.style.height = `${videoSlotEl.offsetHeight}px`;
 }
 
 function hideVideoOverlay(){
@@ -724,8 +677,6 @@ function hideVideoOverlay(){
   ytHiddenEl.style.width = '1px';
   ytHiddenEl.style.height = '1px';
   window.removeEventListener('resize', positionVideoOverlay);
-  const mainScroll = document.querySelector('.main-scroll');
-  if (mainScroll) mainScroll.removeEventListener('scroll', positionVideoOverlay);
 }
 
 let currentViewName = 'home';
@@ -766,11 +717,6 @@ function showSettings(){
   videoViewEl.style.display = 'none';
 }
 
-// Positions the already-playing YouTube iframe directly over a visible
-// placeholder slot — same audio, same playback position, same tracked
-// player instance, just no longer visually tucked away. This is simply
-// showing the video half of the same official YouTube embed that's
-// already providing the audio.
 let viewBeforeVideo = 'home';
 
 function showVideo(){
@@ -800,13 +746,8 @@ function showVideo(){
   ytHiddenEl.classList.add('video-active');
   positionVideoOverlay();
   window.addEventListener('resize', positionVideoOverlay);
-  const mainScroll = document.querySelector('.main-scroll');
-  if (mainScroll) mainScroll.addEventListener('scroll', positionVideoOverlay);
 }
 
-// Toggling the button while already in video mode needs to actually
-// leave it — and it should return to whatever view you were on
-// before, not always dump you back at Home.
 function toggleVideo(){
   if (currentViewName === 'video'){
     if (viewBeforeVideo === 'results') showSearchResults();
@@ -817,8 +758,6 @@ function toggleVideo(){
   }
 }
 
-// Shows what playlist (or Liked Songs) you're currently browsing, so
-// it's never ambiguous which list you're looking at.
 function renderResultsHeader(title, subtitle, artUrl){
   resultsHeaderEl.innerHTML = artUrl
     ? `<img class="results-header-art" src="${artUrl}" alt="">`
@@ -852,8 +791,6 @@ function renderHomeView(){
   greeting.textContent = getGreeting();
   homeViewEl.appendChild(greeting);
 
-  // Quick access row (Spotify-style): Liked Songs shortcut + a few
-  // recently played tracks, as small clickable rectangles.
   const quickItems = [];
   if (spotifyAccessToken) quickItems.push({ type: 'liked' });
   recentlyPlayed.slice(0, 5).forEach(t => quickItems.push({ type: 'track', track: t }));
@@ -877,7 +814,6 @@ function renderHomeView(){
     homeViewEl.appendChild(quickGrid);
   }
 
-  // Your Playlists — grid view (YouTube-style thumbnail grid, Spotify-style cards)
   if (cachedUserPlaylists.length){
     const label = document.createElement('div');
     label.className = 'section-label';
@@ -901,7 +837,6 @@ function renderHomeView(){
     homeViewEl.appendChild(grid);
   }
 
-  // Recently Played — grid view
   if (recentlyPlayed.length){
     const label = document.createElement('div');
     label.className = 'section-label';
@@ -977,7 +912,6 @@ function generateShuffleOrder(){
   return arr;
 }
 
-// Only used while shuffle is on — picks the next track in the shuffled order.
 function nextShuffleIndex(index){
   if (!shuffleOrder.length || shuffleOrder.length !== currentResults.length){
     shuffleOrder = generateShuffleOrder();
@@ -1014,7 +948,6 @@ function renderQueuePanel(){
   nowRow.innerHTML = queueRowHtml(currentResults[currentIndex], true);
   nowEl.appendChild(nowRow);
 
-  // Compute upcoming order — shuffle-aware, capped at 25 for a sane list.
   const upcoming = [];
   if (shuffleOn){
     if (!shuffleOrder.length || shuffleOrder.length !== currentResults.length){
@@ -1061,8 +994,6 @@ async function playAt(index){
   await playTrack(currentResults[index]);
 }
 
-// A manual pick (clicking a row). In shuffle mode this also updates the
-// back/forward history; in normal mode, position alone is enough.
 function playFromRow(index){
   if (shuffleOn){
     if (currentIndex !== -1) historyStack.push(currentIndex);
@@ -1087,8 +1018,6 @@ function goNext(){
     return;
   }
 
-  // Normal mode: always just move one position forward — no history
-  // stack needed, works no matter how you got to the current track.
   let next;
   if (currentIndex < currentResults.length - 1) next = currentIndex + 1;
   else next = repeatMode === 'all' ? 0 : -1;
@@ -1105,7 +1034,6 @@ function goPrev(){
     return;
   }
 
-  // Normal mode: always just move one position back.
   let prev;
   if (currentIndex > 0) prev = currentIndex - 1;
   else prev = repeatMode === 'all' ? currentResults.length - 1 : -1;
@@ -1118,8 +1046,6 @@ function toggleShuffle(){
   mpShuffle.classList.toggle('toggled', shuffleOn);
   if (shuffleOn){
     shuffleOrder = generateShuffleOrder();
-    // Fresh history for the new shuffle sequence — mixing in whatever
-    // you did in linear mode before wouldn't make sense here.
     historyStack = [];
     forwardStack = [];
   }
@@ -1154,8 +1080,6 @@ function updateNowPlayingUI(track){
   renderNowPlayingPanel(track);
 }
 
-// A compact, Spotify-style "now playing" companion panel — large art,
-// title, artist, and a link back to the track on Spotify.
 function renderNowPlayingPanel(track){
   const contentEl = document.getElementById('nowPlayingContent');
   if (!contentEl) return;
@@ -1178,7 +1102,6 @@ async function playTrack(track, resumeAtSeconds){
   saveNowPlayingCookie(track);
   recordRecentlyPlayed(track);
 
-  // A fresh play (not a resume) starts its saved position over at 0.
   if (!resumeAtSeconds) setCookie('youtify_last_position', '0', 30);
 
   try {
@@ -1193,8 +1116,6 @@ async function playTrack(track, resumeAtSeconds){
     setStatus(err.message);
   }
 }
-
-/* ---------- Track Select ---------- */
 
 function getCurrentTrackObj(){
   if (currentIndex === -1 || !currentResults[currentIndex]) return null;
@@ -1283,11 +1204,7 @@ function playSingleTrack(track){
   playFromRow(0);
 }
 
-/* ---------- Restore on load ---------- */
-
 async function restoreSession(){
-  // Silent re-login from a saved refresh token, if we have one and
-  // didn't just complete a fresh login via redirect.
   if (!spotifyAccessToken){
     const savedRefresh = getCookie('youtify_spotify_refresh');
     if (savedRefresh){
@@ -1331,9 +1248,6 @@ async function restoreSession(){
     currentIndex = 0;
   }
 
-  // Show the restored track in the player bar without autoplaying —
-  // browsers block unsolicited autoplay anyway, and it respects the
-  // person's own choice of when to resume listening.
   pendingRestoreTrack = track;
   const savedPosition = parseInt(getCookie('youtify_last_position'), 10);
   pendingRestorePosition = Number.isFinite(savedPosition) ? savedPosition : 0;
@@ -1374,6 +1288,24 @@ document.getElementById('brandHome').addEventListener('click', showHome);
 showHome();
 handleSpotifyRedirect().then(restoreSession);
 
+// The player bar's real height changes on mobile (it wraps to two rows),
+// but everything reserving space for it (main content padding, side
+// panel positioning) was reading a fixed CSS guess. A ResizeObserver
+// keeps that guess accurate — but its very first firing happens while
+// the bar is still `display:none` (before any track has played),
+// measuring 0px. Writing that 0 in would permanently override the CSS
+// fallback and make the bar overlap everything once it finally shows,
+// so only ever update on a real, nonzero measurement.
+new ResizeObserver(() => {
+  const h = playerBarEl.offsetHeight;
+  if (h > 0){
+    document.documentElement.style.setProperty('--bottom-bar-h', `${h}px`);
+    if (currentViewName === 'video'){
+      positionVideoOverlay();
+    }
+  }
+}).observe(playerBarEl);
+
 /* ---------- Mobile drawer ---------- */
 const sidebarEl = document.querySelector('.sidebar');
 const sidebarBackdropEl = document.getElementById('sidebarBackdrop');
@@ -1387,9 +1319,6 @@ document.getElementById('mobileMenuBtn').addEventListener('click', () => {
   sidebarBackdropEl.classList.toggle('open');
 });
 sidebarBackdropEl.addEventListener('click', closeMobileDrawer);
-// Picking anything from the drawer (a playlist, settings, home) should
-// tuck it back away automatically rather than leaving it covering the
-// screen on a phone.
 sidebarEl.addEventListener('click', (e) => {
   if (e.target.closest('.playlist-row, #settingsBtn, #brandHome, .footer-link a')){
     closeMobileDrawer();
@@ -1575,9 +1504,6 @@ const MINI_PLAYER_CSS = `
 `;
 
 async function toggleMiniPlayer(){
-  // Document Picture-in-Picture is Chrome/Edge only today. Where it's
-  // not available, fall back to the old in-page collapsed bar instead
-  // of doing nothing.
   if (!('documentPictureInPicture' in window)){
     playerBarEl.classList.toggle('mini');
     return;
@@ -1595,19 +1521,12 @@ async function toggleMiniPlayer(){
     height: 48,
   });
 
-  // Self-contained styles built specifically for this compact view —
-  // deliberately NOT cloned from the main page's stylesheet, since
-  // reading cssRules across documents is unreliable (CORS-sensitive,
-  // and any one failure left the whole popout unstyled and oversized).
   const accent = getComputedStyle(document.documentElement)
     .getPropertyValue('--accent').trim() || '#1DB954';
   const style = pipWindow.document.createElement('style');
   style.textContent = MINI_PLAYER_CSS.replace(/%%ACCENT%%/g, accent);
   pipWindow.document.head.appendChild(style);
 
-  // Move the real node (not a clone) so every listener on it keeps
-  // working untouched, and audio keeps playing from the hidden
-  // YouTube player back in the main document the whole time.
   miniRoot.style.display = 'flex';
   pipWindow.document.body.appendChild(miniRoot);
 
@@ -1688,10 +1607,27 @@ function toggleMute(){
     applyVolume(Number(mutedVolume));
   }
 }
-volumeIcon.addEventListener('click', toggleMute);
-mpVolumeIcon.addEventListener('click', toggleMute);
 
-// Keyboard shortcuts — ignored while typing in the search box
+// Mobile: tapping the volume icon pops the slider open as a small
+// popover instead of muting (adjusting volume matters more on a phone
+// than a quick mute toggle does), since it's otherwise permanently
+// hidden to save space in an already-tight player bar.
+const volumeBlockEl = document.getElementById('volumeBlock');
+const mobileMQ = window.matchMedia('(max-width: 768px)');
+volumeIcon.addEventListener('click', () => {
+  if (mobileMQ.matches){
+    volumeBlockEl.classList.toggle('expanded');
+  } else {
+    toggleMute();
+  }
+});
+mpVolumeIcon.addEventListener('click', toggleMute);
+document.addEventListener('click', (e) => {
+  if (volumeBlockEl.classList.contains('expanded') && !volumeBlockEl.contains(e.target)){
+    volumeBlockEl.classList.remove('expanded');
+  }
+});
+
 document.addEventListener('keydown', (e) => {
   if (document.activeElement === queryEl) return;
   if (e.code === 'Space'){
