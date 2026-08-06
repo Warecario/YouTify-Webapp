@@ -419,6 +419,7 @@
     flex:1;
     overflow-y:auto;
     padding:32px 32px 8px;
+    position:relative;
   }
   .search-wrap{
     max-width:640px;
@@ -690,13 +691,20 @@
   .source-block a{ color:var(--accent); text-decoration:none; }
   .source-block a:hover{ text-decoration:underline; }
 
+  /* yt-hidden lives permanently inside .main-scroll (a persistent
+     sibling of the toggled views, so it survives them being
+     display:none) and is positioned via `position:absolute` relative
+     to that same scrolling container — NOT position:fixed relative to
+     the viewport. This means it scrolls naturally with the page and
+     needs no manual scroll-tracking, and its coordinates stay correct
+     regardless of player-bar height changes, sidebar width, etc. */
   #yt-hidden{
-    position:fixed; width:1px; height:1px; overflow:hidden;
+    position:absolute; width:1px; height:1px; overflow:hidden;
     opacity:0; pointer-events:none; z-index:-1;
     top:0; left:0;
   }
   #yt-hidden.video-active{
-    opacity:1 !important; pointer-events:none !important; z-index:95;
+    opacity:1 !important; pointer-events:none !important; z-index:5;
     border-radius:12px; overflow:hidden;
   }
   #yt-hidden iframe{ width:100% !important; height:100% !important; border:none; }
@@ -755,4 +763,26 @@
     .playlist-grid-view{ grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:12px; }
     .quick-grid{ grid-template-columns:1fr; }
     .settings-card{ max-width:none; }
+
+    /* Volume: hide the slider by default, tap the icon to pop it open
+       as a small vertical strip above the icon instead of it eating
+       permanent width in an already-tight player bar. */
+    #volumeBlock{ position:relative; width:auto; }
+    #volumeBlock input[type="range"]{
+      display:none;
+      position:absolute;
+      bottom:calc(100% + 10px);
+      right:0;
+      width:120px;
+      /* Rotate a horizontal slider into a vertical popover strip above
+         the icon — keeps the same input element/behavior, no separate
+         vertical-slider implementation needed. */
+      transform:rotate(-90deg);
+      transform-origin:bottom right;
+      background:var(--panel);
+      padding:10px;
+      border-radius:8px;
+      box-shadow:0 4px 20px rgba(0,0,0,0.4);
+    }
+    #volumeBlock.expanded input[type="range"]{ display:block; }
   }
