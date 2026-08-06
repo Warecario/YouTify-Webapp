@@ -93,6 +93,8 @@
         <div id="videoSlot" class="video-slot"></div>
         <p id="videoNowPlaying" class="video-now-playing"></p>
       </div>
+
+      <div id="yt-hidden"><div id="ytPlayer"></div></div>
     </div>
   </div>
 </div>
@@ -126,7 +128,7 @@
     </div>
   </div>
 
-  <div class="volume-block">
+  <div class="volume-block" id="volumeBlock">
     <span id="volumeIcon"></span>
     <input type="range" id="volumeSlider" min="0" max="100" value="80">
   </div>
@@ -220,8 +222,6 @@
     <div class="mp-progress-fill" id="mpProgressFill"></div>
   </div>
 </div>
-
-<div id="yt-hidden"><div id="ytPlayer"></div></div>
 
 <script src="app.js" defer></script>
 
