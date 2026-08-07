@@ -1614,6 +1614,14 @@ function toggleMute(){
 // hidden to save space in an already-tight player bar.
 const volumeBlockEl = document.getElementById('volumeBlock');
 const mobileMQ = window.matchMedia('(max-width: 768px)');
+
+// If the drawer was left open on a narrow window and it gets resized
+// back up to desktop width, close it automatically instead of leaving
+// it (and its dark backdrop) stuck on top of the desktop layout.
+mobileMQ.addEventListener('change', (e) => {
+  if (!e.matches) closeMobileDrawer();
+});
+
 volumeIcon.addEventListener('click', () => {
   if (mobileMQ.matches){
     volumeBlockEl.classList.toggle('expanded');
