@@ -39,7 +39,6 @@
     position:fixed; inset:0; background:rgba(0,0,0,0.6);
     z-index:150;
   }
-  .sidebar-backdrop.open{ display:block; }
 
   /* ---------- Sidebar ---------- */
   .sidebar{
@@ -728,6 +727,7 @@
       box-shadow:0 0 40px rgba(0,0,0,0.5);
     }
     .sidebar.open{ transform:translateX(0); }
+    .sidebar-backdrop.open{ display:block; }
 
     .main{ width:100%; }
 
